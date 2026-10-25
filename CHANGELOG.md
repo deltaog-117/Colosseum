@@ -15,3 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workspace test suite.
 - Workspace lints forbidding `unsafe` code and denying `unwrap`.
 - `ROADMAP.md` and `DIARY.md`.
+- `sim::tick`: a validated `TickRate` (1 to 1000 Hz, default 120 Hz) and
+  a `FixedStep` accumulator that turns frame times into whole ticks plus
+  an interpolation alpha, with long stalls clamped to 250 ms.
+- `game`: a `winit` window opened by a thin `main.rs`, and a `GameLoop`
+  that drives the accumulator each frame. The window title shows a tick
+  counter until there is something to render.
+- Unit and property tests for the tick module (alpha range, pending
+  time below one step, bounded ticks per frame, time conservation).

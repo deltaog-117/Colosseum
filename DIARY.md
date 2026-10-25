@@ -16,6 +16,7 @@ Author: deltaog-117
 | 2026-10-25 | Genre, language, engine, art | Single-player arena shooter, Rust, custom `wgpu` engine, PS1 look | ✅ Confirmed |
 | 2026-10-25 | Workspace layout | Three crates, feature-first folders, tiered tests | ✅ Confirmed |
 | 2026-10-25 | Project check command | `scripts/check`, Tier 1 only | ✅ Confirmed |
+| 2026-10-25 | Fixed-timestep loop | Pure accumulator in `sim/tick`, `winit` in `game`, 120 Hz | ✅ Confirmed |
 
 ---
 
@@ -142,6 +143,86 @@ benchmarked.
 
 The script passes with no tests present; it currently proves only that
 format, lint and build are clean.
+
+#### Review / Update Log
+
+| Date | Update | Author |
+|------|--------|--------|
+| 2026-10-25 | Initial entry | deltaog-117 |
+
+---
+
+### Feature: Fixed-Timestep Loop
+
+**Date:** 2026-10-25
+**Status:** Confirmed
+
+#### Context / Background
+
+State must advance in fixed ticks independent of the frame rate, and the
+renderer needs an interpolation factor between ticks. The `winit` event
+loop drives the window.
+
+#### Options Considered
+
+**Option A: Pure accumulator in `sim/tick`; `winit` handler in `game`**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Property-testable with no window <br> • Keeps the sim free of graphics code <br> • Reusable by a future server |
+| **Disadvantages** | • The API between two crates is designed up front |
+| **Implementation Difficulty** | Medium |
+
+**Option B: Accumulator and `winit` handler both in `game`**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Fewest files <br> • Fastest to a window |
+| **Disadvantages** | • Timing logic testable only with a window <br> • Server would duplicate it |
+| **Implementation Difficulty** | Easy |
+
+**Option C: Sim on its own thread, snapshots over a channel**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Rendering never stalls the sim |
+| **Disadvantages** | • Needs a formal concurrency model <br> • Snapshot plumbing before any gameplay exists |
+| **Implementation Difficulty** | Hard |
+
+#### Decision & Rationale
+
+**Chosen Option:** A, at **120 Hz**. 120 divides evenly into 60, 120 and
+240 Hz displays, so ticks and frames line up on common monitors.
+
+**Trade-offs accepted:** the sub-nanosecond rounding in the step (below) and
+single-threaded sim and render, which is revisited only if profiling
+shows the frame budget is at risk.
+
+#### Implementation Notes
+
+- `TickRate` is a validated newtype (1 to 1000 Hz); `try_new` is the only
+  way to build one besides the `DEFAULT` constant.
+- The tick step is integer nanoseconds (8,333,333 ns at 120 Hz). That
+  rounded value is the definition of a tick, so no drift accumulates;
+  the sim runs about 0.04 ppm fast against the wall clock, which is
+  irrelevant for a single-player game.
+- Elapsed time per frame is clamped to 250 ms (about 30 ticks at 120 Hz).
+  A stall drops time rather than running a catch-up burst that would
+  make the next frame slower still (the "spiral of death").
+- `alpha` is documented as `0.0..=1.0`, inclusive, because converting the
+  `f64` ratio to `f32` can round a value just below 1 up to 1.
+- `GameLoop::frame` takes the `Instant` as a parameter so tests drive the
+  clock. `game` is a binary crate, so its tests live in the module.
+- Property tests: alpha range, pending time below one step, ticks per
+  frame bounded, and time conservation (`ticks * step + pending` equals
+  the total elapsed) for unclamped input.
+- Not yet done, on purpose: logging and tracing (nothing worth tracing
+  until there is state), and a benchmark for `advance` (it is a handful of
+  integer operations; benchmarks arrive with the v0.2 to v0.4 work).
+- `main` returns `Box<dyn Error>` rather than adding `anyhow` for one
+  call site; revisit when error sources multiply.
+- The post-write formatter hook orders imports in the 2021 style, while
+  `cargo fmt` uses 2024. `cargo fmt --all` before the check settles it.
 
 #### Review / Update Log
 

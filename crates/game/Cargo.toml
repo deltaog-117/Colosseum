@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 sim = { path = "../sim" }
 render = { path = "../render" }
+winit = "0.30.13"
 
 [lints]
 workspace = true

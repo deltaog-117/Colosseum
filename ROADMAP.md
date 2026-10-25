@@ -24,6 +24,8 @@ Author: deltaog-117
 - ✅ Project scaffold: Cargo workspace with `sim`, `render` and `game`,
   feature-first folders and mirrored test trees
 - ✅ `scripts/check` approved and in place (format, clippy, tests)
+- ✅ Window and fixed-timestep loop: 120 Hz `FixedStep` accumulator in
+  `sim`, `winit` window and `GameLoop` in `game`
 
 ---
 
@@ -31,7 +33,7 @@ Author: deltaog-117
 
 **v0.1: a window with a player that moves in a grey-box room.**
 
-- **Window and fixed-timestep loop** – State advances in fixed ticks
+- ✅ **Window and fixed-timestep loop** – State advances in fixed ticks
   (60-128/s) independent of frame rate; rendering interpolates between
   ticks. Everything else builds on this.
 - **Input sampling** – Keys and mouse become a small command struct per
@@ -110,11 +112,9 @@ Author: deltaog-117
 
 ## 🎯 Next Actions (Immediate)
 
-1. **Fixed-timestep loop** – `crates/game` with the loop and a thin
-   `main.rs`, driven by `winit`.
-2. **Input to command struct** – `crates/sim` input module consumed once
-   per tick.
-3. **Minimal renderer** – `crates/render` with `wgpu` setup, a colored
+1. **Input to command struct** – `crates/sim` input module consumed once
+   per tick; `crates/game` `device_input` samples keys and mouse.
+2. **Minimal renderer** – `crates/render` with `wgpu` setup, a colored
    mesh pipeline, depth buffer and low-res target.
-4. **Player movement and grey-box room** – `crates/sim` movement and
+3. **Player movement and grey-box room** – `crates/sim` movement and
    collision, with property tests.
