@@ -1,11 +1,14 @@
-//! Levels: a glTF binary read into render meshes, a collision world and a
-//! spawn point.
+//! Levels: a glTF binary read into render meshes, a collision world, spawn
+//! points and pickups.
 //!
 //! Authoring contract, so one file drives both what is drawn and what is
 //! solid:
 //! - a node named `col_*` with a mesh is a box collider, invisible, and its
 //!   transform must keep it axis-aligned (translation, scale, quarter turns);
-//! - a node named `spawn` marks where the player's feet start;
+//! - a node named `spawn` or `spawn_*` marks where a body's feet may start,
+//!   and the first one in file order is where the first round begins;
+//! - a node named `pickup_health*` or `pickup_ammo*` marks where that item
+//!   stands, with its base at the node's position;
 //! - any other node with a mesh is drawn.
 
 mod collider;
@@ -18,6 +21,7 @@ use gltf::buffer::Source;
 use gltf::{Buffer, Gltf, Node};
 use render::mesh::Mesh;
 use sim::collision::{Aabb, World};
+use sim::rules::{PickupKind, SpawnPoints, SpawnsError};
 
 use self::collider::ColliderError;
 use self::visual::VisualError;
@@ -25,6 +29,9 @@ use self::visual::VisualError;
 const ARENA: &[u8] = include_bytes!("../../../assets/levels/arena.glb");
 const COLLIDER_PREFIX: &str = "col_";
 const SPAWN_NAME: &str = "spawn";
+const SPAWN_PREFIX: &str = "spawn_";
+const HEALTH_PICKUP_PREFIX: &str = "pickup_health";
+const AMMO_PICKUP_PREFIX: &str = "pickup_ammo";
 
 /// Why a level was rejected.
 #[derive(Debug)]
@@ -37,10 +44,10 @@ pub(crate) enum LevelError {
     Collider { node: String, source: ColliderError },
     /// A drawn node cannot be turned into a mesh.
     Visual { node: String, source: VisualError },
-    /// No `spawn` node.
+    /// No `spawn` or `spawn_*` node.
     NoSpawn,
-    /// More than one `spawn` node.
-    DuplicateSpawn,
+    /// A spawn point is not finite.
+    BadSpawn,
     /// No `col_*` node, so the player would fall out of the world.
     NoColliders,
 }
@@ -53,7 +60,7 @@ impl fmt::Display for LevelError {
             Self::Collider { node, source } => write!(f, "collider `{node}`: {source}"),
             Self::Visual { node, source } => write!(f, "mesh `{node}`: {source}"),
             Self::NoSpawn => f.write_str("the level has no `spawn` node"),
-            Self::DuplicateSpawn => f.write_str("the level has more than one `spawn` node"),
+            Self::BadSpawn => f.write_str("a spawn point is not finite"),
             Self::NoColliders => f.write_str("the level has no `col_*` node"),
         }
     }
@@ -65,7 +72,7 @@ impl std::error::Error for LevelError {
             Self::Parse(err) => Some(err),
             Self::Collider { source, .. } => Some(source),
             Self::Visual { source, .. } => Some(source),
-            Self::NoScene | Self::NoSpawn | Self::DuplicateSpawn | Self::NoColliders => None,
+            Self::NoScene | Self::NoSpawn | Self::BadSpawn | Self::NoColliders => None,
         }
     }
 }
@@ -75,7 +82,8 @@ impl std::error::Error for LevelError {
 pub(crate) struct Level {
     meshes: Vec<Mesh>,
     world: World,
-    spawn: Vec3,
+    spawns: SpawnPoints,
+    pickups: Vec<(PickupKind, Vec3)>,
 }
 
 impl Level {
@@ -89,9 +97,14 @@ impl Level {
         &self.world
     }
 
-    /// Where the player's feet start.
-    pub(crate) fn spawn(&self) -> Vec3 {
-        self.spawn
+    /// Where bodies may start.
+    pub(crate) fn spawns(&self) -> &SpawnPoints {
+        &self.spawns
+    }
+
+    /// The items standing in the level, with the position of their base.
+    pub(crate) fn pickups(&self) -> &[(PickupKind, Vec3)] {
+        &self.pickups
     }
 }
 
@@ -118,7 +131,11 @@ pub(crate) fn load(bytes: &[u8]) -> Result<Level, LevelError> {
     Ok(Level {
         meshes: parts.meshes,
         world: World::new(parts.solids),
-        spawn: parts.spawn.ok_or(LevelError::NoSpawn)?,
+        spawns: SpawnPoints::try_new(parts.spawns).map_err(|err| match err {
+            SpawnsError::Empty => LevelError::NoSpawn,
+            SpawnsError::NonFinite => LevelError::BadSpawn,
+        })?,
+        pickups: parts.pickups,
     })
 }
 
@@ -126,7 +143,8 @@ pub(crate) fn load(bytes: &[u8]) -> Result<Level, LevelError> {
 struct Parts {
     meshes: Vec<Mesh>,
     solids: Vec<Aabb>,
-    spawn: Option<Vec3>,
+    spawns: Vec<Vec3>,
+    pickups: Vec<(PickupKind, Vec3)>,
 }
 
 impl Parts {
@@ -138,10 +156,14 @@ impl Parts {
                 .map_or_else(|| format!("#{}", node.index()), str::to_owned)
         };
 
-        if name == SPAWN_NAME {
-            if self.spawn.replace(world.w_axis.truncate()).is_some() {
-                return Err(LevelError::DuplicateSpawn);
-            }
+        let position = world.w_axis.truncate();
+
+        if name == SPAWN_NAME || name.starts_with(SPAWN_PREFIX) {
+            self.spawns.push(position);
+        } else if name.starts_with(HEALTH_PICKUP_PREFIX) {
+            self.pickups.push((PickupKind::Health, position));
+        } else if name.starts_with(AMMO_PICKUP_PREFIX) {
+            self.pickups.push((PickupKind::Ammo, position));
         } else if let Some(mesh) = node.mesh() {
             if name.starts_with(COLLIDER_PREFIX) {
                 let solid =

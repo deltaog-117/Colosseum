@@ -2,7 +2,7 @@ use glam::Vec3;
 use sim::collision::{Aabb, World};
 use sim::movement::Pose;
 use sim::tick::TickRate;
-use sim::weapon::tuning::{DAMAGE, PROJECTILE_SPEED, START_AMMO};
+use sim::weapon::tuning::{DAMAGE, MAX_AMMO, PROJECTILE_SPEED, START_AMMO};
 use sim::weapon::{Denied, Launcher};
 
 const RATE: TickRate = TickRate::DEFAULT;
@@ -192,4 +192,14 @@ fn a_wall_in_front_of_a_target_stops_the_rocket_first() {
         }
     }
     panic!("the rocket never hit the wall");
+}
+
+#[test]
+fn added_ammo_fills_up_to_the_cap() {
+    let mut launcher = Launcher::new(RATE);
+    assert_eq!(launcher.add_ammo(5), 5);
+    assert_eq!(launcher.ammo(), START_AMMO + 5);
+    assert_eq!(launcher.add_ammo(u16::MAX), MAX_AMMO - START_AMMO - 5);
+    assert_eq!(launcher.ammo(), MAX_AMMO);
+    assert_eq!(launcher.add_ammo(1), 0);
 }

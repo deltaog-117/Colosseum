@@ -1,7 +1,9 @@
 use std::fmt;
 
 use super::projectile::{Detonation, Fate, Projectile};
-use super::tuning::{COOLDOWN_SECONDS, DAMAGE, LIFETIME_SECONDS, MAX_IN_FLIGHT, START_AMMO};
+use super::tuning::{
+    COOLDOWN_SECONDS, DAMAGE, LIFETIME_SECONDS, MAX_AMMO, MAX_IN_FLIGHT, START_AMMO,
+};
 use crate::collision::{Aabb, World};
 use crate::movement::Pose;
 use crate::tick::TickRate;
@@ -34,7 +36,8 @@ impl std::error::Error for Denied {}
 
 /// A rocket launcher and the rockets it has in the air.
 ///
-/// Ammo only goes down, one per shot. Shots are at least the cooldown
+/// Ammo goes down by one per shot and up only through [`Self::add_ammo`],
+/// never past `MAX_AMMO`. Shots are at least the cooldown
 /// apart, and at most `MAX_IN_FLIGHT` rockets exist at once.
 #[derive(Debug, Clone)]
 pub struct Launcher {
@@ -107,6 +110,15 @@ impl Launcher {
         self.ammo -= 1;
         self.cooldown_left = self.cooldown_ticks;
         Ok(())
+    }
+
+    /// Loads up to `amount` more rockets, never past `MAX_AMMO`, and returns
+    /// how many fit.
+    pub fn add_ammo(&mut self, amount: u16) -> u16 {
+        let loaded = self.ammo.saturating_add(amount).min(MAX_AMMO);
+        let added = loaded - self.ammo;
+        self.ammo = loaded;
+        added
     }
 
     /// Rockets left in the launcher.

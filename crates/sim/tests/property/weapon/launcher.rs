@@ -4,7 +4,7 @@ use sim::collision::{Aabb, World};
 use sim::movement::Pose;
 use sim::tick::TickRate;
 use sim::weapon::Launcher;
-use sim::weapon::tuning::{COOLDOWN_SECONDS, DAMAGE, MAX_IN_FLIGHT, START_AMMO};
+use sim::weapon::tuning::{COOLDOWN_SECONDS, DAMAGE, MAX_AMMO, MAX_IN_FLIGHT, START_AMMO};
 
 /// How far inside a solid a point must be to count as inside, which keeps
 /// float rounding on a face from failing a run.
@@ -131,6 +131,22 @@ proptest! {
                 prop_assert!(!deep_inside(&world, bang.position()));
                 prop_assert!((bang.normal().length() - 1.0).abs() < 1.0e-5);
             }
+        }
+    }
+}
+
+proptest! {
+    #[test]
+    fn added_ammo_never_passes_the_cap_and_is_fully_accounted_for(
+        loads in prop::collection::vec(0u16..=u16::MAX, 1..50),
+    ) {
+        let mut launcher = Launcher::new(TickRate::DEFAULT);
+        for amount in loads {
+            let before = launcher.ammo();
+            let added = launcher.add_ammo(amount);
+            prop_assert!(launcher.ammo() <= MAX_AMMO);
+            prop_assert_eq!(launcher.ammo(), before + added);
+            prop_assert!(added <= amount);
         }
     }
 }

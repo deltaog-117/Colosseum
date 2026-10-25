@@ -731,3 +731,83 @@ deferred; bodies stay boxes.
 | Date | Update | Author |
 |------|--------|--------|
 | 2026-10-25 | Initial entry | deltaog-117 |
+
+---
+
+### Feature: Game Rules
+
+**Date:** 2026-10-25
+**Status:** Confirmed
+
+#### Context / Background
+
+Fourth v0.2 item. The game had one spawn point, a respawn timer inside
+`Health`, ammo that only went down and no score, pickups or end to the
+match. There is still one body, so nothing can score a kill yet.
+
+#### Options Considered
+
+**Option A: A headless `sim::rules` module with a round state machine**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Matches the sim-has-no-graphics rule <br> • Property-testable <br> • Reusable by bots, the HUD and a server |
+| **Disadvantages** | • Largest API surface <br> • `game` needs glue to drive it |
+| **Implementation Difficulty** | Medium |
+
+**Option B: Thin slices in existing modules**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Smallest diff <br> • Each piece lands alone |
+| **Disadvantages** | • Match state has no single owner <br> • Bots and the HUD would force a refactor |
+| **Implementation Difficulty** | Simple |
+
+**Option C: Event-driven rules layer**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Clean seam for HUD, audio and netcode |
+| **Disadvantages** | • More abstraction than one player justifies |
+| **Implementation Difficulty** | Hard |
+
+#### Decision & Rationale
+
+**Chosen: Option A.** The HUD and bots both read match state, so it needs
+one owner. An event stream can grow out of it later if audio or netcode
+want one.
+
+**Trade-offs accepted:** `Round` scores one player; per-player scores wait
+for bots.
+
+#### Implementation Notes
+
+- `Round` is `Playing(ticks)` or `Intermission(ticks)`, both always
+  positive, so a round cannot sit at zero. Phases repeat, and the score
+  resets on the tick the next round starts. Kills and deaths are ignored
+  outside `Playing`, so the final score cannot move.
+- `Pickup` is ready or counting down. `PickupKind::is_wanted` keeps a full
+  body from wasting one; `give` applies it through `Health::heal` and
+  `Launcher::add_ammo`, both capped.
+- `SpawnPoints` is non-empty and finite by construction, so `first()` and
+  `farthest_from()` cannot fail. Respawn picks the point farthest from where
+  the player fell; a tie goes to the earliest point.
+- The level contract takes `spawn` and `spawn_*`, `pickup_health*` and
+  `pickup_ammo*` nodes. The old duplicate-spawn error is gone. I added
+  seven empty nodes to `arena.glb` by editing its JSON chunk; no buffer
+  changed.
+- In `game`, a finished round freezes the player and blasts, and the next
+  round resets health, launcher, position and every pickup. The title shows
+  time, kills, deaths and frags until the HUD exists.
+- Tuning values (180 s round, 8 s intermission, +25 health, +5 rockets, 20 s
+  and 15 s pickup waits, cap of 20 rockets) are first guesses, not
+  playtested.
+- Not done: no kill can be earned until bots exist (`Round::record_kill` is
+  tested but unused by `game`); no benchmark; no logging; and the game was
+  not run to see the pickups, since `scripts/check` does not open a window.
+
+#### Review / Update Log
+
+| Date | Update | Author |
+|------|--------|--------|
+| 2026-10-25 | Initial entry | deltaog-117 |

@@ -12,6 +12,7 @@ use glam::Vec3;
 use sim::combat::{self, Health, Outcome};
 use sim::input::{Axis, Command, Event, InputState};
 use sim::movement::{Player, Pose};
+use sim::rules::{Phase, Pickup, PickupKind, Round, Transition};
 use sim::tick::TickRate;
 use sim::weapon::Launcher;
 use winit::application::ApplicationHandler;
@@ -29,6 +30,8 @@ const TITLE: &str = "fps-3d-game";
 /// Half the edge of the cube that stands in for a rocket, until there is art.
 const ROCKET_HALF_SIZE: f32 = 0.12;
 const ROCKET_COLOR: [f32; 3] = [1.0, 0.45, 0.1];
+const HEALTH_PICKUP_COLOR: [f32; 3] = [0.2, 0.9, 0.3];
+const AMMO_PICKUP_COLOR: [f32; 3] = [0.95, 0.8, 0.2];
 
 pub(crate) fn run() -> Result<(), Box<dyn std::error::Error>> {
     let event_loop = EventLoop::new()?;
@@ -47,6 +50,10 @@ struct App {
     player: Player,
     launcher: Launcher,
     health: Health,
+    round: Round,
+    pickups: Vec<Pickup>,
+    /// Where the player last fell, so the respawn can be far from it.
+    death_at: Vec3,
     /// The player's pose one tick ago, the start of the interpolation.
     previous: Pose,
     game_loop: GameLoop,
@@ -65,6 +72,27 @@ fn intent(command: &Command) -> (Axis, Axis, bool, bool) {
         command.jump(),
         command.fire(),
     )
+}
+
+/// What the title shows of the round, so it is rewritten when it changes.
+fn round_readout(round: &Round) -> (Phase, u32, i64) {
+    (round.phase(), round.seconds_left(), round.score().frags())
+}
+
+/// One cube per pickup that is ready to be taken, standing on its base.
+fn pickup_meshes(pickups: &[Pickup]) -> Vec<Mesh> {
+    pickups
+        .iter()
+        .filter(|pickup| pickup.is_ready())
+        .filter_map(|pickup| {
+            let color = match pickup.kind() {
+                PickupKind::Health => HEALTH_PICKUP_COLOR,
+                PickupKind::Ammo => AMMO_PICKUP_COLOR,
+            };
+            let bounds = pickup.bounds();
+            Mesh::cuboid(bounds.min(), bounds.max(), color)
+        })
+        .collect()
 }
 
 /// One small cube per rocket, placed between its last two ticks. A rocket
@@ -86,7 +114,13 @@ impl App {
         let rate = TickRate::DEFAULT;
         let projection = Projection::try_new(90f32.to_radians(), 0.05, 200.0)?;
         let level = level::arena()?;
-        let player = Player::try_spawn(level.spawn(), level.world(), rate)?;
+        let first_spawn = level.spawns().first();
+        let player = Player::try_spawn(first_spawn, level.world(), rate)?;
+        let pickups = level
+            .pickups()
+            .iter()
+            .filter_map(|(kind, base)| Pickup::try_new(*kind, *base, rate))
+            .collect();
         let pose = player.pose().ok_or("spawn pose is not finite")?;
         let camera = Camera::new(pose.eye(), projection).ok_or("spawn point is not finite")?;
         Ok(Self {
@@ -97,6 +131,9 @@ impl App {
             player,
             launcher: Launcher::new(rate),
             health: Health::new(rate),
+            round: Round::new(rate),
+            pickups,
+            death_at: first_spawn,
             previous: pose,
             game_loop: GameLoop::new(rate, Instant::now()),
             rate,
@@ -109,9 +146,10 @@ impl App {
 
     /// Applies this tick's blasts to the player. Every rocket is the
     /// player's own until there are other shooters, so the shooter's share
-    /// of the damage applies.
+    /// of the damage applies. Nothing lands once the round is over, so the
+    /// final score cannot change after the bell.
     fn apply_blasts(&mut self) {
-        if !self.health.is_alive() {
+        if !self.health.is_alive() || !self.round.is_playing() {
             return;
         }
         for blast in self.launcher.detonations() {
@@ -121,15 +159,19 @@ impl App {
             let hit = hit.to_shooter();
             self.player.push(hit.impulse());
             if self.health.damage(hit.damage()) == Outcome::Killed {
+                self.round.record_death();
+                self.death_at = self.player.position();
                 break;
             }
         }
     }
 
-    /// Puts the player back at the spawn point with a full launcher. If the
-    /// spawn is somehow blocked the player stays where they fell.
+    /// Puts the player at the spawn point farthest from where they fell,
+    /// with a full launcher. If the spawn is somehow blocked the player
+    /// stays where they fell.
     fn respawn(&mut self) {
-        match Player::try_spawn(self.level.spawn(), self.level.world(), self.rate) {
+        let spawn = self.level.spawns().farthest_from(self.death_at);
+        match Player::try_spawn(spawn, self.level.world(), self.rate) {
             Ok(player) => {
                 self.player = player;
                 self.launcher = Launcher::new(self.rate);
@@ -138,6 +180,30 @@ impl App {
         }
         if let Some(pose) = self.player.pose() {
             self.previous = pose;
+        }
+    }
+
+    /// Starts the next round: everyone back at the first spawn, healed,
+    /// reloaded, with every pickup standing again.
+    fn restart_round(&mut self) {
+        self.health = Health::new(self.rate);
+        self.death_at = self.level.spawns().first();
+        self.respawn();
+        self.pickups.iter_mut().for_each(Pickup::reset);
+    }
+
+    /// Hands pickups to the player for one tick. The dead and the finished
+    /// take nothing, but the pickups' waits still run.
+    fn collect_pickups(&mut self) {
+        let alive = self.health.is_alive() && self.round.is_playing();
+        let body = alive.then(|| *self.player.bounds());
+        for pickup in &mut self.pickups {
+            let taken = pickup.step(body.as_ref(), |kind| {
+                kind.is_wanted(&self.health, &self.launcher)
+            });
+            if let Some(kind) = taken {
+                kind.give(&mut self.health, &mut self.launcher);
+            }
         }
     }
 
@@ -192,17 +258,25 @@ impl App {
         let intent_before = intent(&self.command);
         let ammo_before = self.launcher.ammo();
         let health_before = self.health.points();
+        let round_before = round_readout(&self.round);
         for _ in 0..advance.ticks {
             self.command = self.input.take_command();
+            let transition = self.round.step();
+            if transition == Some(Transition::Restarted) {
+                self.restart_round();
+            }
             if let Some(pose) = self.player.pose() {
                 self.previous = pose;
             }
-            if self.health.is_alive() {
+            let playing = self.health.is_alive() && self.round.is_playing();
+            if playing {
                 self.player.step(&self.command, self.level.world());
             }
             self.launcher.step(self.level.world());
             self.apply_blasts();
-            if self.health.is_alive()
+            self.collect_pickups();
+            if playing
+                && self.health.is_alive()
                 && self.command.fire()
                 && let Some(aim) = self.player.pose()
             {
@@ -228,19 +302,30 @@ impl App {
             && (self.ticks / hz != seconds_before
                 || intent(&self.command) != intent_before
                 || self.launcher.ammo() != ammo_before
-                || self.health.points() != health_before)
+                || self.health.points() != health_before
+                || round_readout(&self.round) != round_before)
         {
             let (forward, strafe, jump, fire) = intent(&self.command);
+            let score = self.round.score();
+            let round = match self.round.phase() {
+                Phase::Playing => format!("time {}", self.round.seconds_left()),
+                Phase::Intermission => format!("ROUND OVER, next in {}", self.round.seconds_left()),
+            };
             window.set_title(&format!(
-                "{TITLE} - tick {} - fwd {forward:?} strafe {strafe:?} jump {jump} fire {fire} - ammo {} - health {}",
+                "{TITLE} - tick {} - fwd {forward:?} strafe {strafe:?} jump {jump} fire {fire} - ammo {} - health {} - kills {} deaths {} frags {} - {round}",
                 self.ticks,
                 self.launcher.ammo(),
-                self.health.points()
+                self.health.points(),
+                score.kills(),
+                score.deaths(),
+                score.frags()
             ));
         }
 
         if let Some(renderer) = &mut self.renderer {
-            renderer.set_transient_meshes(&rocket_meshes(&self.launcher, advance.alpha));
+            let mut transient = rocket_meshes(&self.launcher, advance.alpha);
+            transient.extend(pickup_meshes(&self.pickups));
+            renderer.set_transient_meshes(&transient);
             renderer.render(&self.camera);
         }
     }

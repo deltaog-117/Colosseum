@@ -62,6 +62,18 @@ impl Health {
         }
     }
 
+    /// Restores up to `amount` hit points, never past `MAX_HEALTH`, and
+    /// returns how many came back. The dead cannot be healed: only the
+    /// respawn wait brings them back.
+    pub fn heal(&mut self, amount: u16) -> u16 {
+        let State::Alive(points) = self.state else {
+            return 0;
+        };
+        let healed = points.saturating_add(amount).min(MAX_HEALTH);
+        self.state = State::Alive(healed);
+        healed - points
+    }
+
     /// Counts the respawn wait down by one tick, and restores full health
     /// when it ends. Returns true on that tick, so the caller can put the
     /// body back in the world. Call once per tick.

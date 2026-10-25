@@ -3,6 +3,7 @@ use std::error::Error;
 use glam::{Mat4, Vec3};
 use proptest::prelude::*;
 use sim::movement::Player;
+use sim::rules::PickupKind;
 use sim::tick::TickRate;
 
 use super::collider::{ColliderError, bounds};
@@ -74,7 +75,9 @@ fn the_arena_loads() -> TestResult {
     let level = arena()?;
     assert_eq!(level.meshes().len(), 6);
     assert_eq!(level.world().solids().len(), 10);
-    assert_eq!(level.spawn(), Vec3::new(0.0, 0.0, 8.0));
+    assert_eq!(level.spawns().first(), Vec3::new(0.0, 0.0, 8.0));
+    assert_eq!(level.spawns().points().len(), 4);
+    assert_eq!(level.pickups().len(), 4);
     Ok(())
 }
 
@@ -88,9 +91,31 @@ fn the_arena_floor_is_the_first_solid() -> TestResult {
 }
 
 #[test]
-fn the_arena_spawn_is_free() -> TestResult {
+fn every_arena_spawn_is_free() -> TestResult {
     let level = arena()?;
-    Player::try_spawn(level.spawn(), level.world(), TickRate::DEFAULT)?;
+    for point in level.spawns().points() {
+        Player::try_spawn(*point, level.world(), TickRate::DEFAULT)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn every_arena_pickup_stands_in_open_air_and_both_kinds_exist() -> TestResult {
+    let level = arena()?;
+    for (_, base) in level.pickups() {
+        let cube = Aabb::try_new(*base + Vec3::Y * 0.35, Vec3::splat(0.35))?;
+        assert!(
+            level
+                .world()
+                .solids()
+                .iter()
+                .all(|solid| !solid.overlaps(&cube)),
+            "pickup at {base} is inside a solid"
+        );
+    }
+    let kinds: Vec<_> = level.pickups().iter().map(|(kind, _)| *kind).collect();
+    assert!(kinds.contains(&PickupKind::Health));
+    assert!(kinds.contains(&PickupKind::Ammo));
     Ok(())
 }
 
@@ -99,7 +124,7 @@ fn a_collider_and_a_spawn_make_a_level() -> TestResult {
     let level = load(&glb(&nodes([BOX, SPAWN, FILLER, FILLER])))?;
     assert!(level.meshes().is_empty());
     assert_eq!(level.world().solids().len(), 1);
-    assert_eq!(level.spawn(), Vec3::new(1.0, 2.0, 3.0));
+    assert_eq!(level.spawns().first(), Vec3::new(1.0, 2.0, 3.0));
     Ok(())
 }
 
@@ -124,9 +149,29 @@ fn a_level_without_a_spawn_is_rejected() {
 }
 
 #[test]
-fn a_level_with_two_spawns_is_rejected() {
-    let result = load(&glb(&nodes([BOX, SPAWN, SPAWN, FILLER])));
-    assert!(matches!(result, Err(LevelError::DuplicateSpawn)));
+fn every_spawn_node_is_kept_in_file_order() -> TestResult {
+    let second = r#"{"name":"spawn_1","translation":[4,5,6]}"#;
+    let level = load(&glb(&nodes([BOX, SPAWN, second, FILLER])))?;
+    assert_eq!(
+        level.spawns().points(),
+        [Vec3::new(1.0, 2.0, 3.0), Vec3::new(4.0, 5.0, 6.0)]
+    );
+    Ok(())
+}
+
+#[test]
+fn pickup_nodes_are_read_by_kind() -> TestResult {
+    let health = r#"{"name":"pickup_health_0","translation":[1,0,0]}"#;
+    let ammo = r#"{"name":"pickup_ammo_7","translation":[0,0,2]}"#;
+    let level = load(&glb(&nodes([BOX, SPAWN, health, ammo])))?;
+    assert_eq!(
+        level.pickups(),
+        [
+            (PickupKind::Health, Vec3::new(1.0, 0.0, 0.0)),
+            (PickupKind::Ammo, Vec3::new(0.0, 0.0, 2.0)),
+        ]
+    );
+    Ok(())
 }
 
 #[test]

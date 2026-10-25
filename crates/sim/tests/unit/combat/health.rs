@@ -80,3 +80,21 @@ fn the_dead_respawn_at_full_health_after_the_wait() {
     assert_eq!(health.points(), MAX_HEALTH);
     assert!(!health.step(), "respawn is reported once");
 }
+
+#[test]
+fn healing_restores_points_up_to_the_maximum() {
+    let mut health = Health::new(RATE);
+    health.damage(40);
+    assert_eq!(health.heal(25), 25);
+    assert_eq!(health.points(), MAX_HEALTH - 15);
+    assert_eq!(health.heal(100), 15);
+    assert_eq!(health.points(), MAX_HEALTH);
+}
+
+#[test]
+fn healing_the_dead_does_nothing() {
+    let mut health = Health::new(RATE);
+    health.damage(MAX_HEALTH);
+    assert_eq!(health.heal(50), 0);
+    assert!(!health.is_alive());
+}

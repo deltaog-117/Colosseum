@@ -44,3 +44,18 @@ proptest! {
         prop_assert_eq!(health.points(), MAX_HEALTH);
     }
 }
+
+proptest! {
+    #[test]
+    fn healing_never_passes_the_maximum_and_never_lowers_health(
+        damage in 0u16..=300,
+        amount in 0u16..=u16::MAX,
+    ) {
+        let mut health = Health::new(TickRate::DEFAULT);
+        health.damage(damage);
+        let before = health.points();
+        let healed = health.heal(amount);
+        prop_assert!(health.points() <= MAX_HEALTH);
+        prop_assert_eq!(health.points(), before + healed);
+    }
+}

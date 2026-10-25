@@ -40,6 +40,9 @@ Author: deltaog-117
 - ✅ Hit detection and damage: rockets detonate on bodies as well as walls;
   the blast deals distance-falloff damage and knockback, walls block it,
   and `Health` carries death and a timed respawn (`sim::combat`)
+- ✅ Game rules: several spawn points with far-from-death respawns, health
+  and ammo pickups, kills/deaths/frags and a repeating 180 s round
+  (`sim::rules`)
 
 ---
 
@@ -83,7 +86,7 @@ Author: deltaog-117
 - **Bots** – Navigation, aiming and basic behavior, so the game is
   testable alone. Skeletal animation waits until here, as it is the
   largest single renderer piece.
-- **Game rules** – Spawns, respawns, scoring, pickups and a match timer.
+- ✅ **Game rules** – Spawns, respawns, scoring, pickups and a match timer.
 - **HUD** – Health, ammo, crosshair and scoreboard via a font atlas and
   quad batching.
 - **Performance benchmarks** – Benchmarks for the tick loop and
@@ -128,11 +131,12 @@ Author: deltaog-117
 
 ## 🎯 Next Actions (Immediate)
 
-The first three v0.2 items are done. Pick the next one:
+The first four v0.2 items are done. Pick the next one:
 
-1. **PS1 shader pass** – vertex snapping, affine texturing, dithering and
+1. **HUD** – health, ammo, crosshair, time and score on screen instead of in
+   the title; `sim::rules` already exposes all of it.
+2. **PS1 shader pass** – vertex snapping, affine texturing, dithering and
    fog; the loader already supplies per-vertex color to build on.
-2. **Bots** – navigation, aiming and basic behavior; they are the first
-   other bodies to take rockets (`Launcher::step_against` is ready).
-3. **Game rules** – spawns, scoring, pickups (ammo has none yet) and a
-   match timer; the respawn timer already exists in `Health`.
+3. **Bots** – navigation, aiming and basic behavior; they are the first
+   other bodies to take rockets (`Launcher::step_against` is ready) and to
+   earn kills (`Round::record_kill` is ready).

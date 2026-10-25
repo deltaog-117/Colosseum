@@ -9,6 +9,8 @@ pub const COOLDOWN_SECONDS: f32 = 0.8;
 pub const LIFETIME_SECONDS: f32 = 5.0;
 /// Rockets in the launcher at spawn.
 pub const START_AMMO: u16 = 10;
+/// Most rockets the launcher can hold.
+pub const MAX_AMMO: u16 = 20;
 /// Damage dealt by a direct hit, and the most a blast can deal.
 pub const DAMAGE: u16 = 100;
 /// Reach of the blast, from the detonation to the nearest point of a body.

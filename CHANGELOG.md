@@ -108,11 +108,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit and property tests for the above: health stays in bounds and always
   respawns, impacts are finite and within weapon limits, walls block
   blasts, direct hits deal full damage, and pushes respect the limits.
+- `sim::rules`: `SpawnPoints` (never empty, always finite; picks the point
+  farthest from where a body fell), `Score` (kills, deaths, frags), `Pickup`
+  and `PickupKind` (health and ammo, with a respawn wait and a wanted check
+  so a full body leaves them), and `Round`, a 180 s clock that ends in an
+  8 s intermission and restarts with a clean score.
+- `sim::combat::Health::heal` and `sim::weapon::Launcher::add_ammo`, both
+  capped (`MAX_HEALTH`, new `MAX_AMMO` of 20).
+- `game`: the arena has four spawn points and four pickups; deaths respawn
+  far from where the player fell, pickups draw as green and yellow cubes
+  while ready, and the title shows time left, kills, deaths and frags.
+  When time runs out the player freezes and the final score stays up until
+  the next round.
+- Unit and property tests for the above: spawn choice is the farthest
+  point, pickups cannot be retaken before their wait, phases alternate and
+  the score is frozen between rounds, and healing and loading never pass
+  their caps.
 
 ### Changed
 - Mouse look now turns the player in `sim` rather than the camera in
   `game`; the look sensitivity constant moved with it.
 - `sim` now depends on `glam` for vector math.
+- The level contract accepts several `spawn` / `spawn_*` nodes and
+  `pickup_health*` / `pickup_ammo*` nodes; `arena.glb` gained three spawns
+  and four pickups. A level with two spawn nodes is no longer an error.
 - `game` now depends on `gltf` (without its image and base64 features),
   and loads the level from the embedded arena instead of `grey_box`.
 
