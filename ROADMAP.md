@@ -28,6 +28,9 @@ Author: deltaog-117
   `sim`, `winit` window and `GameLoop` in `game`
 - ✅ Input sampling: `sim::input` turns device-neutral events into one
   `Command` per tick; `game` translates WASD, Space and mouse motion
+- ✅ Minimal renderer: `wgpu` scene pass into a 320x240 target, depth,
+  first-person camera, nearest-neighbor blit; `game` shows a placeholder
+  grey-box room with mouse look
 
 ---
 
@@ -40,7 +43,7 @@ Author: deltaog-117
   ticks. Everything else builds on this.
 - ✅ **Input sampling** – Keys and mouse become a small command struct per
   tick, so the simulation never reads devices directly.
-- **Minimal renderer** – Draw colored static meshes with depth, a
+- ✅ **Minimal renderer** – Draw colored static meshes with depth, a
   first-person camera, and a low-resolution offscreen target scaled with
   nearest-neighbor filtering.
 - **Grey-box room and player movement** – Quake-style acceleration,
@@ -114,7 +117,7 @@ Author: deltaog-117
 
 ## 🎯 Next Actions (Immediate)
 
-1. **Minimal renderer** – `crates/render` with `wgpu` setup, a colored
-   mesh pipeline, depth buffer and low-res target.
-2. **Player movement and grey-box room** – `crates/sim` movement and
-   collision, with property tests; consumes the input `Command`.
+1. **Player movement and grey-box room** – `crates/sim` movement and
+   collision, with property tests; consumes the input `Command`. Replaces
+   the placeholder room in `game::grey_box` and adds tick interpolation
+   to the renderer.

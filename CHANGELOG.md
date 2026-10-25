@@ -32,3 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   focus loss to release). The window title shows the current movement
   command as a temporary readout.
 - Unit and property tests for the input module.
+- `render`: a `wgpu` renderer that draws colored indexed meshes with a
+  depth buffer into a 320x240 offscreen target, then scales it onto the
+  window with nearest-neighbor filtering (whole-number scale, letterboxed).
+- `render::camera`: a validated `Projection` and a first-person `Camera`
+  (yaw wraps, pitch is clamped short of vertical).
+- `render::mesh`: a validated `Mesh` and a shaded `Mesh::cuboid`.
+- `render::resolution`: `RenderResolution` and the window-fitting
+  `Viewport` math.
+- `game`: the window now renders a placeholder grey-box room, and mouse
+  look turns the camera.
+- Unit and property tests for the camera, resolution and mesh modules.

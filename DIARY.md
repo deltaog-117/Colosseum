@@ -18,6 +18,7 @@ Author: deltaog-117
 | 2026-10-25 | Project check command | `scripts/check`, Tier 1 only | ✅ Confirmed |
 | 2026-10-25 | Fixed-timestep loop | Pure accumulator in `sim/tick`, `winit` in `game`, 120 Hz | ✅ Confirmed |
 | 2026-10-25 | Input sampling | Device-neutral `Event` and `InputState` in `sim/input`, one `Command` per tick | ✅ Confirmed |
+| 2026-10-25 | Minimal renderer | Direct `wgpu`, scene into a low-res target, nearest-neighbor blit | ✅ Confirmed |
 
 ---
 
@@ -309,6 +310,88 @@ networking (option C).
   buttons survive many commands, focus loss returns to idle.
 - Not yet done: the grab and title wiring in `window.rs` has no
   automated test (it needs a window); the pure mapping is unit-tested.
+
+#### Review / Update Log
+
+| Date | Update | Author |
+|------|--------|--------|
+| 2026-10-25 | Initial entry | deltaog-117 |
+
+---
+
+### Feature: Minimal Renderer
+
+**Date:** 2026-10-25
+**Status:** Confirmed
+
+#### Context / Background
+
+`render` was an empty stub. v0.1 needs colored static meshes with depth, a
+first-person camera and the low-resolution, nearest-neighbor look, and the
+PS1 shader pass (v0.2) must have a scene pass of its own to extend.
+
+#### Options Considered
+
+**Option A: Direct `wgpu`, two passes (scene to a low-res target, then a blit)**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Matches the locked custom-engine decision <br> • PS1 effects slot into the scene pass <br> • Few dependencies |
+| **Disadvantages** | • Two pipelines and two shaders <br> • GPU code is hard to unit test |
+| **Implementation Difficulty** | Medium |
+
+**Option B: Single pass at native resolution**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Smallest first step |
+| **Disadvantages** | • Misses the low-res requirement <br> • Reworks the pipeline and depth buffer later |
+| **Implementation Difficulty** | Easy |
+
+**Option C: A higher-level engine crate**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Fastest to pixels |
+| **Disadvantages** | • Contradicts the custom-engine decision <br> • Hides the pipeline PS1 effects need <br> • Large dependency tree |
+| **Implementation Difficulty** | Easy |
+
+#### Decision & Rationale
+
+**Chosen: Option A.** Both the low-res target and the later PS1 effects
+depend on the scene being its own pass; doing it now avoids reworking
+pipelines and the depth buffer. B only defers the same work and C breaks
+a decision already made.
+
+**Trade-offs accepted:** more boilerplate now, and the `wgpu` part is
+verified by running the game, not by automated tests.
+
+#### Implementation Notes
+
+- Pure, GPU-free types carry the rules and are property-tested:
+  `Projection` (fov in `(0, π)`, `0 < near < far`), `Camera` (pitch
+  clamped short of vertical, yaw wrapped, non-finite turns ignored),
+  `RenderResolution` and its `fit` (largest whole scale that fits,
+  centered, scales down only for a window smaller than the target) and
+  `Mesh` (non-empty, whole triangles, indices in range, finite values).
+- `Renderer` takes anything `wgpu` accepts as a surface target, so `game`
+  hands it an `Arc<Window>` and `render` never depends on `winit`.
+- The offscreen color target shares the surface format, so the blit is a
+  plain copy; the sampler is nearest. The projection uses the target's
+  aspect, not the window's, and the viewport letterboxes the rest.
+- Camera convention: right-handed, +Y up, yaw 0 looks down -Z, positive
+  yaw turns left, positive pitch looks up. `game` flips mouse signs.
+- Depth range is 0..1 and Y-up (`glam`'s `directx` projection), matching
+  `wgpu`. `glam` 0.34 moved these under `glam::camera`.
+- No back-face culling yet: the grey-box room is seen from the inside and
+  placeholder winding is not worth enforcing.
+- `game::grey_box` is a placeholder room with pillars; real geometry and
+  collision replace it later. Mouse look turns the camera directly, per
+  tick, until the player exists in `sim`.
+- Not done: interpolation between ticks (nothing moves yet), a benchmark
+  (no measured hot path yet) and any automated test of the GPU code.
+  `scripts/check` does not open a window, so the picture was checked by
+  running the game only.
 
 #### Review / Update Log
 
