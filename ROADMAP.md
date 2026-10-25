@@ -26,6 +26,8 @@ Author: deltaog-117
 - ✅ `scripts/check` approved and in place (format, clippy, tests)
 - ✅ Window and fixed-timestep loop: 120 Hz `FixedStep` accumulator in
   `sim`, `winit` window and `GameLoop` in `game`
+- ✅ Input sampling: `sim::input` turns device-neutral events into one
+  `Command` per tick; `game` translates WASD, Space and mouse motion
 
 ---
 
@@ -36,7 +38,7 @@ Author: deltaog-117
 - ✅ **Window and fixed-timestep loop** – State advances in fixed ticks
   (60-128/s) independent of frame rate; rendering interpolates between
   ticks. Everything else builds on this.
-- **Input sampling** – Keys and mouse become a small command struct per
+- ✅ **Input sampling** – Keys and mouse become a small command struct per
   tick, so the simulation never reads devices directly.
 - **Minimal renderer** – Draw colored static meshes with depth, a
   first-person camera, and a low-resolution offscreen target scaled with
@@ -112,9 +114,7 @@ Author: deltaog-117
 
 ## 🎯 Next Actions (Immediate)
 
-1. **Input to command struct** – `crates/sim` input module consumed once
-   per tick; `crates/game` `device_input` samples keys and mouse.
-2. **Minimal renderer** – `crates/render` with `wgpu` setup, a colored
+1. **Minimal renderer** – `crates/render` with `wgpu` setup, a colored
    mesh pipeline, depth buffer and low-res target.
-3. **Player movement and grey-box room** – `crates/sim` movement and
-   collision, with property tests.
+2. **Player movement and grey-box room** – `crates/sim` movement and
+   collision, with property tests; consumes the input `Command`.

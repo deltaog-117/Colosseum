@@ -23,3 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   counter until there is something to render.
 - Unit and property tests for the tick module (alpha range, pending
   time below one step, bounded ticks per frame, time conservation).
+- `sim::input`: `Button`, `Event` and an `InputState` that turns events
+  into one `Command` per tick (two movement axes, jump, raw look delta).
+  Opposing buttons cancel, taps shorter than a tick are kept, look is
+  consumed once, and losing focus clears everything.
+- `game`: WASD and Space bindings on physical keys, mouse look from raw
+  device motion while the cursor is grabbed (click to grab, Escape or
+  focus loss to release). The window title shows the current movement
+  command as a temporary readout.
+- Unit and property tests for the input module.

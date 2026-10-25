@@ -17,6 +17,7 @@ Author: deltaog-117
 | 2026-10-25 | Workspace layout | Three crates, feature-first folders, tiered tests | ✅ Confirmed |
 | 2026-10-25 | Project check command | `scripts/check`, Tier 1 only | ✅ Confirmed |
 | 2026-10-25 | Fixed-timestep loop | Pure accumulator in `sim/tick`, `winit` in `game`, 120 Hz | ✅ Confirmed |
+| 2026-10-25 | Input sampling | Device-neutral `Event` and `InputState` in `sim/input`, one `Command` per tick | ✅ Confirmed |
 
 ---
 
@@ -223,6 +224,91 @@ shows the frame budget is at risk.
   call site; revisit when error sources multiply.
 - The post-write formatter hook orders imports in the 2021 style, while
   `cargo fmt` uses 2024. `cargo fmt --all` before the check settles it.
+
+#### Review / Update Log
+
+| Date | Update | Author |
+|------|--------|--------|
+| 2026-10-25 | Initial entry | deltaog-117 |
+
+---
+
+### Feature: Input Sampling
+
+**Date:** 2026-10-25
+**Status:** Confirmed
+
+#### Context / Background
+
+The simulation must never read devices; it consumes one small command per
+tick. Frames and ticks do not line up (a frame can run zero, one or
+several ticks), so the rules for turning key and mouse events into
+per-tick commands need to be exact and testable.
+
+#### Options Considered
+
+**Option A: `Command` in `sim`, sampling rules in a `game`-side sampler**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Smallest change <br> • Little new `sim` surface |
+| **Disadvantages** | • Latching and delta rules sit outside the property-test tree <br> • Easy to get the frame-to-tick split subtly wrong |
+| **Implementation Difficulty** | Easy |
+
+**Option B: `Button`, `Event`, `InputState` and `Command` all in `sim/input`**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • All input rules property-testable headless <br> • `game` only translates winit events <br> • Rebinding touches `game` only <br> • Reusable by a future server |
+| **Disadvantages** | • More `sim` surface up front |
+| **Implementation Difficulty** | Medium |
+
+**Option C: Timestamped raw events applied at exact tick boundaries**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Sub-frame accuracy <br> • Natural base for netcode replay |
+| **Disadvantages** | • Queue and timestamp plumbing is heavy at 120 Hz <br> • Benefit only arrives with networking |
+| **Implementation Difficulty** | Hard |
+
+#### Decision & Rationale
+
+**Chosen Option:** B. It is the only option that puts the "sim never
+reads devices" boundary in the type system, and it puts the fiddly rules
+under the existing property tests.
+
+**Trade-offs accepted:** more `sim` surface now; input is sampled per
+frame rather than per event, which is fine at 120 Hz and revisited with
+networking (option C).
+
+#### Implementation Notes
+
+- `Command` has private fields and is built only by
+  `InputState::take_command`. Movement is two `Axis` values (negative,
+  zero, positive), so "forward and back at once" cannot be represented:
+  opposing buttons resolve to `Zero`.
+- `take_command` drains the one-shot parts (mouse movement and presses)
+  and keeps held buttons. When a frame runs several ticks, only the
+  first carries the look delta, so a long frame does not multiply a turn.
+- A press is latched until the next command, so a tap shorter than a
+  tick is seen by exactly one command instead of being lost.
+- Look is raw device counts; sensitivity and pitch clamping belong to the
+  movement step. Non-finite motion is dropped and the sum is capped at
+  `LOOK_LIMIT`, so a command's look is always finite.
+- `FocusLost` clears held buttons, latches and pending look, so a key
+  released while another window had focus cannot stay stuck.
+- `game` maps physical keys (WASD, Space) so AZERTY keeps the layout.
+  Mouse motion comes from `DeviceEvent::MouseMotion` and is applied only
+  while the cursor is grabbed (click to grab, Escape or focus loss to
+  release). Key repeats are skipped.
+- Cursor grab tries `Locked` and falls back to `Confined` (X11).
+- Until a renderer or movement exists, the window title shows the last
+  command's forward, strafe and jump, as a manual check.
+- Property tests: look finite and bounded, look consumed once, a tap
+  seen by exactly one command, one button activates only itself, held
+  buttons survive many commands, focus loss returns to idle.
+- Not yet done: the grab and title wiring in `window.rs` has no
+  automated test (it needs a window); the pure mapping is unit-tested.
 
 #### Review / Update Log
 
