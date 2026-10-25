@@ -2,7 +2,7 @@ use std::fmt;
 
 use super::projectile::{Detonation, Fate, Projectile};
 use super::tuning::{COOLDOWN_SECONDS, DAMAGE, LIFETIME_SECONDS, MAX_IN_FLIGHT, START_AMMO};
-use crate::collision::World;
+use crate::collision::{Aabb, World};
 use crate::movement::Pose;
 use crate::tick::TickRate;
 
@@ -65,11 +65,17 @@ impl Launcher {
     /// Flies every projectile one tick and cools the launcher. Call once per
     /// tick, before [`Self::try_fire`].
     pub fn step(&mut self, world: &World) {
+        self.step_against(world, &[]);
+    }
+
+    /// [`Self::step`], where rockets also detonate on the bodies in
+    /// `targets`. Leave the shooter's own body out: a rocket starts inside it.
+    pub fn step_against(&mut self, world: &World, targets: &[Aabb]) {
         self.cooldown_left = self.cooldown_left.saturating_sub(1);
         self.detonations.clear();
         let (dt, detonations) = (self.dt, &mut self.detonations);
         self.projectiles
-            .retain_mut(|projectile| match projectile.advance(dt, world) {
+            .retain_mut(|projectile| match projectile.advance(dt, world, targets) {
                 Fate::Flying => true,
                 Fate::Detonated(detonation) => {
                     detonations.push(detonation);
@@ -113,7 +119,7 @@ impl Launcher {
         &self.projectiles
     }
 
-    /// Rockets that hit a solid during the latest [`Self::step`].
+    /// Rockets that hit a solid or a target during the latest [`Self::step`].
     pub fn detonations(&self) -> &[Detonation] {
         &self.detonations
     }

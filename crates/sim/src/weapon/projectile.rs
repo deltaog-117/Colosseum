@@ -1,7 +1,7 @@
 use glam::Vec3;
 
 use super::tuning::PROJECTILE_SPEED;
-use crate::collision::World;
+use crate::collision::{Aabb, World, cast_boxes};
 
 /// A projectile that struck a solid.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -89,15 +89,23 @@ impl Projectile {
     }
 
     /// Moves one tick of `dt` seconds. The move is cast as a segment, so a
-    /// thin wall stops the projectile however fast it flies.
-    pub(super) fn advance(&mut self, dt: f32, world: &World) -> Fate {
+    /// thin wall or body stops the projectile however fast it flies. It
+    /// detonates on whichever of the world and `targets` it meets first.
+    pub(super) fn advance(&mut self, dt: f32, world: &World, targets: &[Aabb]) -> Fate {
         if self.ticks_left == 0 {
             return Fate::Expired;
         }
         self.ticks_left -= 1;
         self.previous = self.position;
         let delta = self.velocity * dt;
-        if let Some(hit) = world.cast(self.position, delta) {
+        let hit = [
+            world.cast(self.position, delta),
+            cast_boxes(targets, self.position, delta),
+        ]
+        .into_iter()
+        .flatten()
+        .min_by(|a, b| a.fraction().total_cmp(&b.fraction()));
+        if let Some(hit) = hit {
             self.position = hit.point();
             return Fate::Detonated(Detonation {
                 position: hit.point(),

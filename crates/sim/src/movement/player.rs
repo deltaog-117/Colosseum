@@ -99,6 +99,20 @@ impl Player {
         self.settle(world);
     }
 
+    /// Adds `impulse` to the velocity, as a blast does. An upward push lifts
+    /// the player off the ground. A non-finite impulse is ignored, and the
+    /// velocity keeps its `TERMINAL_SPEED` limit.
+    pub fn push(&mut self, impulse: Vec3) {
+        if !impulse.is_finite() {
+            return;
+        }
+        self.velocity = (self.velocity + impulse)
+            .clamp(Vec3::splat(-TERMINAL_SPEED), Vec3::splat(TERMINAL_SPEED));
+        if impulse.y > 0.0 {
+            self.on_ground = false;
+        }
+    }
+
     /// Position of the feet, the middle of the bottom face.
     pub fn position(&self) -> Vec3 {
         self.bounds.center() - Vec3::Y * self.bounds.half_extents().y

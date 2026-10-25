@@ -37,21 +37,25 @@ impl World {
     /// or leaves a solid it starts on, hits nothing. Non-finite input hits
     /// nothing either.
     pub fn cast(&self, origin: Vec3, delta: Vec3) -> Option<RayHit> {
-        if !(origin.is_finite() && delta.is_finite()) {
-            return None;
-        }
-        let (fraction, entry_normal) = self
-            .solids()
-            .iter()
-            .filter_map(|solid| enter(solid, origin, delta))
-            .min_by(|a, b| a.0.total_cmp(&b.0))?;
-        let normal = entry_normal.unwrap_or_else(|| -delta.normalize_or_zero());
-        Some(RayHit {
-            fraction,
-            point: origin + delta * fraction,
-            normal,
-        })
+        cast_boxes(self.solids(), origin, delta)
     }
+}
+
+/// [`World::cast`] against any set of boxes, such as the bodies of targets.
+pub fn cast_boxes(boxes: &[Aabb], origin: Vec3, delta: Vec3) -> Option<RayHit> {
+    if !(origin.is_finite() && delta.is_finite()) {
+        return None;
+    }
+    let (fraction, entry_normal) = boxes
+        .iter()
+        .filter_map(|solid| enter(solid, origin, delta))
+        .min_by(|a, b| a.0.total_cmp(&b.0))?;
+    let normal = entry_normal.unwrap_or_else(|| -delta.normalize_or_zero());
+    Some(RayHit {
+        fraction,
+        point: origin + delta * fraction,
+        normal,
+    })
 }
 
 /// Slab test: the span of the segment parameter inside each pair of

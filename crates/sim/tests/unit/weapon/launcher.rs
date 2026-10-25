@@ -159,3 +159,37 @@ fn a_rocket_launched_from_inside_a_solid_detonates_at_once() {
     launcher.step(&block);
     assert_eq!(launcher.detonations().len(), 1);
 }
+
+#[test]
+fn a_rocket_detonates_on_a_target_in_front_of_the_wall() {
+    let world = wall_ahead();
+    let target = aabb(Vec3::new(-1.0, 0.0, -11.0), Vec3::new(1.0, 3.0, -10.0));
+    let mut launcher = Launcher::new(RATE);
+    fire_ok(&mut launcher);
+    for _ in 0..LIFETIME_TICKS {
+        launcher.step_against(&world, &[target]);
+        if let Some(bang) = launcher.detonations().first() {
+            assert!((bang.position().z - -10.0).abs() < 1.0e-3);
+            assert_eq!(bang.normal(), Vec3::Z);
+            assert_eq!(bang.damage(), DAMAGE);
+            return;
+        }
+    }
+    panic!("the rocket never hit the target");
+}
+
+#[test]
+fn a_wall_in_front_of_a_target_stops_the_rocket_first() {
+    let world = wall_ahead();
+    let hidden = aabb(Vec3::new(-1.0, 0.0, -29.0), Vec3::new(1.0, 3.0, -28.0));
+    let mut launcher = Launcher::new(RATE);
+    fire_ok(&mut launcher);
+    for _ in 0..LIFETIME_TICKS {
+        launcher.step_against(&world, &[hidden]);
+        if let Some(bang) = launcher.detonations().first() {
+            assert!((bang.position().z - -20.0).abs() < 1.0e-3);
+            return;
+        }
+    }
+    panic!("the rocket never hit the wall");
+}

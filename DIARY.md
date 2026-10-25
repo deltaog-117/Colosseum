@@ -20,6 +20,7 @@ Author: deltaog-117
 | 2026-10-25 | Input sampling | Device-neutral `Event` and `InputState` in `sim/input`, one `Command` per tick | ✅ Confirmed |
 | 2026-10-25 | Minimal renderer | Direct `wgpu`, scene into a low-res target, nearest-neighbor blit | ✅ Confirmed |
 | 2026-10-25 | Player movement and collision | Quake-style movement, per-axis swept AABB collision in `sim` | ✅ Confirmed |
+| 2026-10-25 | Hit detection and damage | Splash damage and knockback on box bodies, `sim::combat` | ✅ Confirmed |
 
 ---
 
@@ -643,6 +644,87 @@ replaced when hit detection arrives.
   logging (no logging infrastructure yet), applying damage (next item),
   and a run of the game to look at the rockets; `scripts/check` does not
   open a window.
+
+#### Review / Update Log
+
+| Date | Update | Author |
+|------|--------|--------|
+| 2026-10-25 | Initial entry | deltaog-117 |
+
+---
+
+### Feature: Hit Detection and Damage
+
+**Date:** 2026-10-25
+**Status:** Confirmed
+
+#### Context / Background
+
+Third v0.2 item. Rockets detonated on walls and carried a damage number
+that nothing applied. Players are `Aabb` boxes, not capsules, and there is
+only one body in the game so far.
+
+#### Options Considered
+
+**Option A: Direct hit only, segment versus box, health and respawn**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Smallest change <br> • Reuses `Aabb` and the slab test |
+| **Disadvantages** | • A near miss does nothing <br> • No rocket jumping |
+| **Implementation Difficulty** | Simple |
+
+**Option B: Splash damage with falloff and knockback on box bodies**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Gives the rocket its feel <br> • Direct hit falls out as distance zero <br> • Uses only existing types |
+| **Disadvantages** | • Radius, falloff and knockback to tune <br> • Needs a line-of-sight test <br> • Touches `Player` velocity |
+| **Implementation Difficulty** | Medium |
+
+**Option C: Capsule shapes, spatial grid, then health and respawn**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Matches the original roadmap <br> • Scales to many bots |
+| **Disadvantages** | • Largest scope, speculative with one body <br> • Two shapes, as movement stays a box |
+| **Implementation Difficulty** | Hard |
+
+#### Decision & Rationale
+
+**Chosen: Option B, with knockback included.** The rocket launcher is a
+splash weapon and does not feel right without it. Capsules and the grid
+wait for bots, when there are enough bodies to justify them.
+
+**Trade-offs accepted:** the roadmap's capsule and spatial grid are
+deferred; bodies stay boxes.
+
+#### Implementation Notes
+
+- `combat::impact(detonation, world, body)` measures from the blast to the
+  nearest point of the box. Strength is `1 - reach / BLAST_RADIUS`, and
+  both damage and knockback scale with it. Knockback points from the blast
+  through the body's center, so a rocket at the feet throws the player up.
+- Line of sight is a world cast from 5 cm in front of the struck face to
+  the body's center. The lift matters: from the face itself the cast
+  starts on the wall and would slip through a thin one.
+- The shooter takes 50% of the damage and all of the knockback, so a rocket
+  jump hurts but cannot kill from full health. Point-blank at the feet is
+  50 damage; two of them in a row kill.
+- `Health` is `Alive(1..=100)` or `Dead(ticks)`, so a body cannot be alive
+  with no points. The dead ignore damage. Respawn waits 2 s.
+- `Launcher::step_against(world, targets)` casts against the target boxes
+  as well as the world and takes the nearer hit. `step` is the same with no
+  targets. The shooter's own box is left out, since a rocket starts
+  inside it; its own blast still reaches it through `impact`.
+- In `game`, death freezes input and the player; rockets already flying
+  continue. Respawn builds a new `Player` and a fresh `Launcher`.
+- Tuning values (radius 3.5 m, knockback 12 m/s, 2 s respawn) are first
+  guesses, not playtested.
+- Not done: no other body exists yet, so direct hits are only covered by
+  tests; no benchmark (scheduled with the collision gate); no logging; and
+  the game was not run to feel the rocket jump, since `scripts/check` does
+  not open a window.
 
 #### Review / Update Log
 

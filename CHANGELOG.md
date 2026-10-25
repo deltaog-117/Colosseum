@@ -92,6 +92,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are never closer than the cooldown, rockets never end up inside a solid,
   and rockets in open air fly straight at constant speed.
 
+- `sim::combat`: `Health` (hit points, death, timed respawn, no state
+  between alive and dead) and `impact`, which turns a detonation into
+  damage and knockback for a body. Strength falls off linearly to zero at
+  `BLAST_RADIUS` (3.5 m); walls block it; the shooter takes 50% of the
+  damage and all of the knockback via `Impact::to_shooter`.
+- `sim::collision::cast_boxes`: segment cast against any set of boxes.
+- `sim::weapon::Launcher::step_against`: rockets also detonate on target
+  bodies, whichever they meet first.
+- `sim::movement::Player::push`: adds a knockback impulse, ignores
+  non-finite input and keeps the terminal speed limit.
+- `game`: rocket blasts hurt and throw the player (rocket jumping), death
+  waits two seconds then respawns at the spawn point with a full
+  launcher, and the title shows health.
+- Unit and property tests for the above: health stays in bounds and always
+  respawns, impacts are finite and within weapon limits, walls block
+  blasts, direct hits deal full damage, and pushes respect the limits.
+
 ### Changed
 - Mouse look now turns the player in `sim` rather than the camera in
   `game`; the look sensitivity constant moved with it.

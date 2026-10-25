@@ -9,6 +9,7 @@ use render::mesh::Mesh;
 use render::resolution::RenderResolution;
 
 use glam::Vec3;
+use sim::combat::{self, Health, Outcome};
 use sim::input::{Axis, Command, Event, InputState};
 use sim::movement::{Player, Pose};
 use sim::tick::TickRate;
@@ -45,6 +46,7 @@ struct App {
     level: Level,
     player: Player,
     launcher: Launcher,
+    health: Health,
     /// The player's pose one tick ago, the start of the interpolation.
     previous: Pose,
     game_loop: GameLoop,
@@ -94,6 +96,7 @@ impl App {
             level,
             player,
             launcher: Launcher::new(rate),
+            health: Health::new(rate),
             previous: pose,
             game_loop: GameLoop::new(rate, Instant::now()),
             rate,
@@ -102,6 +105,40 @@ impl App {
             command: Command::default(),
             grabbed: false,
         })
+    }
+
+    /// Applies this tick's blasts to the player. Every rocket is the
+    /// player's own until there are other shooters, so the shooter's share
+    /// of the damage applies.
+    fn apply_blasts(&mut self) {
+        if !self.health.is_alive() {
+            return;
+        }
+        for blast in self.launcher.detonations() {
+            let Some(hit) = combat::impact(blast, self.level.world(), self.player.bounds()) else {
+                continue;
+            };
+            let hit = hit.to_shooter();
+            self.player.push(hit.impulse());
+            if self.health.damage(hit.damage()) == Outcome::Killed {
+                break;
+            }
+        }
+    }
+
+    /// Puts the player back at the spawn point with a full launcher. If the
+    /// spawn is somehow blocked the player stays where they fell.
+    fn respawn(&mut self) {
+        match Player::try_spawn(self.level.spawn(), self.level.world(), self.rate) {
+            Ok(player) => {
+                self.player = player;
+                self.launcher = Launcher::new(self.rate);
+            }
+            Err(err) => eprintln!("could not respawn: {err}"),
+        }
+        if let Some(pose) = self.player.pose() {
+            self.previous = pose;
+        }
     }
 
     fn grab_cursor(&mut self) {
@@ -154,19 +191,27 @@ impl App {
 
         let intent_before = intent(&self.command);
         let ammo_before = self.launcher.ammo();
+        let health_before = self.health.points();
         for _ in 0..advance.ticks {
             self.command = self.input.take_command();
             if let Some(pose) = self.player.pose() {
                 self.previous = pose;
             }
-            self.player.step(&self.command, self.level.world());
+            if self.health.is_alive() {
+                self.player.step(&self.command, self.level.world());
+            }
             self.launcher.step(self.level.world());
-            if self.command.fire()
+            self.apply_blasts();
+            if self.health.is_alive()
+                && self.command.fire()
                 && let Some(aim) = self.player.pose()
             {
                 // A denied shot (cooling down, empty) is normal play; the
                 // reason will drive a click sound and the HUD later.
                 let _denied = self.launcher.try_fire(&aim);
+            }
+            if self.health.step() {
+                self.respawn();
             }
         }
 
@@ -182,13 +227,15 @@ impl App {
         if let Some(window) = &self.window
             && (self.ticks / hz != seconds_before
                 || intent(&self.command) != intent_before
-                || self.launcher.ammo() != ammo_before)
+                || self.launcher.ammo() != ammo_before
+                || self.health.points() != health_before)
         {
             let (forward, strafe, jump, fire) = intent(&self.command);
             window.set_title(&format!(
-                "{TITLE} - tick {} - fwd {forward:?} strafe {strafe:?} jump {jump} fire {fire} - ammo {}",
+                "{TITLE} - tick {} - fwd {forward:?} strafe {strafe:?} jump {jump} fire {fire} - ammo {} - health {}",
                 self.ticks,
-                self.launcher.ammo()
+                self.launcher.ammo(),
+                self.health.points()
             ));
         }
 

@@ -9,5 +9,5 @@ mod world;
 
 pub use aabb::{Aabb, AabbError};
 pub use axis::Axis3;
-pub use ray::RayHit;
+pub use ray::{RayHit, cast_boxes};
 pub use world::{SKIN, Sweep, World};

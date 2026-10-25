@@ -37,6 +37,9 @@ Author: deltaog-117
 - ✅ Level geometry and collision: `game::level` loads a glTF binary into
   render meshes, box colliders (`col_*` nodes) and a spawn point; the
   shipped arena replaces the hard-coded room
+- ✅ Hit detection and damage: rockets detonate on bodies as well as walls;
+  the blast deals distance-falloff damage and knockback, walls block it,
+  and `Health` carries death and a timed respawn (`sim::combat`)
 
 ---
 
@@ -71,10 +74,10 @@ Author: deltaog-117
   with box-proxy collision (`col_*` nodes), replacing the single box
   room. Ramps and angled walls wait for brush or triangle collision.
 - ✅ **Projectile weapon** – Projectiles with speed, lifetime, cooldown,
-  ammo and damage; a rocket-style first weapon. Damage is carried but not
-  yet applied.
-- **Hit detection and damage** – Projectile-versus-capsule tests with a
-  spatial grid, health, death and respawn.
+  ammo and damage; a rocket-style first weapon.
+- ✅ **Hit detection and damage** – Splash damage and knockback against
+  box bodies, health, death and respawn. Capsule shapes and a spatial grid
+  are deferred until bots make them worth it.
 - **PS1 shader pass** – Vertex snapping, affine texturing, dithering and
   fog in WGSL, so the look is in place before art arrives.
 - **Bots** – Navigation, aiming and basic behavior, so the game is
@@ -125,12 +128,11 @@ Author: deltaog-117
 
 ## 🎯 Next Actions (Immediate)
 
-The first two v0.2 items are done. Pick the next one:
+The first three v0.2 items are done. Pick the next one:
 
-1. **Hit detection and damage** – projectile versus capsule tests, health,
-   death and respawn; the projectile already carries its damage and
-   reports where it detonates.
-2. **PS1 shader pass** – vertex snapping, affine texturing, dithering and
+1. **PS1 shader pass** – vertex snapping, affine texturing, dithering and
    fog; the loader already supplies per-vertex color to build on.
-3. **Game rules** – spawns, respawns, scoring, pickups (ammo has none yet)
-   and a match timer.
+2. **Bots** – navigation, aiming and basic behavior; they are the first
+   other bodies to take rockets (`Launcher::step_against` is ready).
+3. **Game rules** – spawns, scoring, pickups (ammo has none yet) and a
+   match timer; the respawn timer already exists in `Health`.

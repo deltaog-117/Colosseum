@@ -254,3 +254,41 @@ fn the_eyes_sit_above_the_feet() {
     };
     assert_eq!(pose.eye(), player.position() + Vec3::Y * EYE_HEIGHT);
 }
+
+#[test]
+fn a_push_adds_to_the_velocity() {
+    let world = arena(None);
+    let mut player = grounded(&world);
+    player.push(Vec3::new(3.0, 0.0, -2.0));
+    assert_eq!(player.velocity().x, 3.0);
+    assert_eq!(player.velocity().z, -2.0);
+}
+
+#[test]
+fn an_upward_push_lifts_the_player_off_the_ground() {
+    let world = arena(None);
+    let mut player = grounded(&world);
+    player.push(Vec3::new(0.0, 10.0, 0.0));
+    assert!(!player.on_ground());
+    run(&mut player, &mut InputState::new(), &world, 30);
+    assert!(player.position().y > 1.0, "rose to {}", player.position().y);
+}
+
+#[test]
+fn a_push_cannot_beat_the_speed_limit() {
+    let world = arena(None);
+    let mut player = grounded(&world);
+    player.push(Vec3::splat(1.0e9));
+    assert!(player.velocity().abs().max_element() <= sim::movement::tuning::TERMINAL_SPEED);
+}
+
+#[test]
+fn a_non_finite_push_is_ignored() {
+    let world = arena(None);
+    let mut player = grounded(&world);
+    let before = player.velocity();
+    player.push(Vec3::new(f32::NAN, 1.0, 1.0));
+    player.push(Vec3::new(f32::INFINITY, 0.0, 0.0));
+    assert_eq!(player.velocity(), before);
+    assert!(player.on_ground());
+}
