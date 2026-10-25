@@ -135,6 +135,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit and property tests for the above: any character maps inside the
   atlas, batches stay whole, finite and within their quad cap, text width
   scales linearly, and every HUD vertex stays on screen for any game state.
+- `render::psx`: validated `PsxSettings` and `Fog` for the PS1 look, packed
+  into a uniform the scene shader reads. `PsxSettings::disabled()` turns
+  every effect off.
+- Scene shader: vertex snapping to the 320x240 pixel grid, distance fog and
+  4x4 ordered dithering to 5 bits per channel.
+- `Renderer::set_psx` to change the look at runtime.
+- Unit and property tests for the above: bad fog ranges, colors and dither
+  strengths are rejected, and packed settings are always finite.
 
 ### Changed
 - Mouse look now turns the player in `sim` rather than the camera in
@@ -145,6 +153,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and four pickups. A level with two spawn nodes is no longer an error.
 - `game` now depends on `gltf` (without its image and base64 features),
   and loads the level from the embedded arena instead of `grey_box`.
+- The scene is drawn with snapping, fog and dithering by default, and the
+  background clears to the fog color while fog is on.
 
 ### Removed
 - `game::grey_box`: replaced by `game::level` and `arena.glb`.

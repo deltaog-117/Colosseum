@@ -893,3 +893,80 @@ look for free. The font is pure data, so the layout can be property-tested.
 | Date | Update | Author |
 |------|--------|--------|
 | 2026-10-25 | Initial entry | deltaog-117 |
+
+---
+
+### Feature: PS1 Shader Pass
+
+**Date:** 2026-10-25
+**Status:** Confirmed
+
+#### Context / Background
+
+Sixth v0.2 item. The scene shader drew flat vertex colors. The roadmap asked
+for vertex snapping, affine texturing, dithering and fog, so the look is in
+place before art arrives. Vertices carry a position and a color only, so
+affine texturing has nothing to warp yet.
+
+#### Options Considered
+
+**Option A: Constants baked into the WGSL**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Fewest changes <br> • No new types |
+| **Disadvantages** | • Every tweak needs a rebuild <br> • Nothing testable from Rust |
+| **Implementation Difficulty** | Small |
+
+**Option B: Validated settings type, uploaded as a uniform**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Bad values cannot be built <br> • Tunable and property-testable <br> • Ready for menus and debug tools |
+| **Disadvantages** | • A new type, buffer and bind group entry |
+| **Implementation Difficulty** | Medium |
+
+**Option C: Settings plus UVs and affine texturing**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • The complete PS1 look |
+| **Disadvantages** | • Changes the public `Vertex`, the loader and assets <br> • Mixes in texture work the roadmap leaves for later |
+| **Implementation Difficulty** | High |
+
+#### Decision
+
+**Chosen: Option B.** It covers the effects that can be seen today, makes
+invalid fog and dither values unrepresentable, and leaves `Vertex`, the
+loader and the HUD alone.
+
+**Trade-offs accepted:** affine texturing is not done; it moves to its own
+roadmap item for when textures arrive.
+
+#### Implementation Notes
+
+- `render::psx::PsxSettings::try_new` takes the snap grid (cells per target
+  pixel, or none), an optional `Fog` and a dither strength in `0..=1`. `Fog`
+  needs `0 <= start < end` and a color within `0..=1`. NaN fails every check.
+- `PsxSettings::pack` builds three `vec4`s for the shader, so there is no
+  std140 padding to get wrong. The snap grid is packed per resolution.
+- The vertex stage snaps screen position to the grid and undoes the divide;
+  vertices at or behind the camera plane are left alone, as they have no
+  screen position. Fog uses view depth (`clip.w`) and is applied before
+  dithering. Dithering is a 4x4 Bayer threshold at 5 bits per channel.
+- `Renderer::new` starts with `PsxSettings::default()` (whole-pixel snap, fog
+  from 12 to 45 units, full dither). `Renderer::set_psx` changes it, and
+  `PsxSettings::disabled()` is the rollback. While fog is on, the clear color
+  follows the fog color so distant walls meet the background without a seam.
+- Checked: unit and property tests for validation and packing; `scripts/check`
+  passes; the shader validates under `naga` 30.0.1 (same version as `wgpu`).
+  I started the game for ten seconds but the run printed nothing at all, not
+  even the GPU line, so it proves nothing about the pipeline. I have not seen
+  the picture, so the fog distances and the look are unreviewed by eye.
+- Not done: no benchmark; no settings menu; no affine texturing.
+
+#### Review / Update Log
+
+| Date | Update | Author |
+|------|--------|--------|
+| 2026-10-25 | Initial entry | deltaog-117 |

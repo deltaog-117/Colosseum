@@ -4,6 +4,7 @@ pub mod camera;
 mod gpu;
 pub mod hud;
 pub mod mesh;
+pub mod psx;
 pub mod resolution;
 
 pub use gpu::{RenderError, Renderer};

@@ -3,4 +3,5 @@
 mod camera;
 mod hud;
 mod mesh;
+mod psx;
 mod resolution;

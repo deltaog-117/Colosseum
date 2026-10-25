@@ -46,6 +46,9 @@ Author: deltaog-117
 - ✅ HUD: health, rockets, round clock, frags, crosshair and a Tab
   scoreboard drawn from a built-in bitmap font into the low-res target
   (`render::hud`, `game::hud`)
+- ✅ PS1 shader pass: vertex snapping, distance fog and ordered dithering in
+  WGSL, tuned by validated `PsxSettings` (`render::psx`); affine texturing
+  waits for texture coordinates
 
 ---
 
@@ -84,8 +87,8 @@ Author: deltaog-117
 - ✅ **Hit detection and damage** – Splash damage and knockback against
   box bodies, health, death and respawn. Capsule shapes and a spatial grid
   are deferred until bots make them worth it.
-- **PS1 shader pass** – Vertex snapping, affine texturing, dithering and
-  fog in WGSL, so the look is in place before art arrives.
+- ✅ **PS1 shader pass** – Vertex snapping, dithering and fog in WGSL.
+  Affine texturing is deferred until vertices carry texture coordinates.
 - **Bots** – Navigation, aiming and basic behavior, so the game is
   testable alone. Skeletal animation waits until here, as it is the
   largest single renderer piece.
@@ -134,13 +137,13 @@ Author: deltaog-117
 
 ## 🎯 Next Actions (Immediate)
 
-The first five v0.2 items are done. Pick the next one:
+The first six v0.2 items are done. Pick the next one:
 
-1. **PS1 shader pass** – vertex snapping, affine texturing, dithering and
-   fog; the loader already supplies per-vertex color to build on.
+1. **Performance benchmarks** – the tick loop and collision, with a 5%
+   regression gate; a baseline is worth having before bots add load.
 2. **Bots** – navigation, aiming and basic behavior; they are the first
    other bodies to take rockets (`Launcher::step_against` is ready) and to
    earn kills (`Round::record_kill` is ready). The scoreboard gets its
    extra rows here.
-3. **Performance benchmarks** – the tick loop and collision, with a 5%
-   regression gate.
+3. **Affine texturing** – add texture coordinates to `Vertex` and the
+   glTF loader once real textures arrive.

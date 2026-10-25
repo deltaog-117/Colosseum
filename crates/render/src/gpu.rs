@@ -9,6 +9,7 @@ use wgpu::util::DeviceExt;
 use crate::camera::Camera;
 use crate::hud::HudBatch;
 use crate::mesh::{Mesh, Vertex};
+use crate::psx::PsxSettings;
 use crate::resolution::RenderResolution;
 
 mod hud;
@@ -110,6 +111,8 @@ pub struct Renderer {
     target: SceneTarget,
     scene_pipeline: wgpu::RenderPipeline,
     camera_buffer: wgpu::Buffer,
+    psx_buffer: wgpu::Buffer,
+    psx: PsxSettings,
     camera_bind_group: wgpu::BindGroup,
     hud: HudPass,
     blit_pipeline: wgpu::RenderPipeline,
@@ -160,8 +163,14 @@ impl Renderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let psx = PsxSettings::default();
+        let psx_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("psx"),
+            contents: bytemuck::cast_slice(&psx.pack(resolution)),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
         let (scene_pipeline, camera_bind_group) =
-            scene_pipeline(&device, config.format, &camera_buffer);
+            scene_pipeline(&device, config.format, &camera_buffer, &psx_buffer);
         let hud = HudPass::new(&device, &queue, config.format, resolution);
         let (blit_pipeline, blit_bind_group) = blit_pipeline(&device, config.format, &target);
 
@@ -174,6 +183,8 @@ impl Renderer {
             target,
             scene_pipeline,
             camera_buffer,
+            psx_buffer,
+            psx,
             camera_bind_group,
             hud,
             blit_pipeline,
@@ -194,6 +205,18 @@ impl Renderer {
     /// a handful of small meshes and not for anything bigger.
     pub fn set_transient_meshes(&mut self, meshes: &[Mesh]) {
         self.transient = meshes.iter().map(|mesh| self.upload(mesh)).collect();
+    }
+
+    /// Replaces the PS1 look: vertex snapping, fog and dithering. The new
+    /// settings apply from the next frame; [`PsxSettings::disabled`] draws
+    /// plain vertex colors.
+    pub fn set_psx(&mut self, settings: PsxSettings) {
+        self.psx = settings;
+        self.queue.write_buffer(
+            &self.psx_buffer,
+            0,
+            bytemuck::cast_slice(&settings.pack(self.resolution)),
+        );
     }
 
     /// Replaces the HUD, which is drawn over the scene on every frame until
@@ -222,6 +245,23 @@ impl Renderer {
             indices,
             // `Mesh` guarantees the count fits: its indices address u32 vertices.
             index_count: mesh.indices().len() as u32,
+        }
+    }
+
+    /// Fog colors the background too, so distant geometry meets it without
+    /// a seam.
+    fn clear_color(&self) -> wgpu::Color {
+        match self.psx.fog() {
+            Some(fog) => {
+                let [r, g, b] = fog.color();
+                wgpu::Color {
+                    r: f64::from(r),
+                    g: f64::from(g),
+                    b: f64::from(b),
+                    a: 1.0,
+                }
+            }
+            None => CLEAR_COLOR,
         }
     }
 
@@ -282,7 +322,7 @@ impl Renderer {
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(CLEAR_COLOR),
+                        load: wgpu::LoadOp::Clear(self.clear_color()),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -368,28 +408,29 @@ fn scene_pipeline(
     device: &wgpu::Device,
     format: wgpu::TextureFormat,
     camera_buffer: &wgpu::Buffer,
+    psx_buffer: &wgpu::Buffer,
 ) -> (wgpu::RenderPipeline, wgpu::BindGroup) {
     let module = device.create_shader_module(wgpu::include_wgsl!("gpu/scene.wgsl"));
     let bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("camera layout"),
-        entries: &[wgpu::BindGroupLayoutEntry {
-            binding: 0,
-            visibility: wgpu::ShaderStages::VERTEX,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        }],
+        label: Some("scene layout"),
+        entries: &[
+            uniform_entry(0, wgpu::ShaderStages::VERTEX),
+            uniform_entry(1, wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT),
+        ],
     });
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("camera"),
+        label: Some("scene"),
         layout: &bind_layout,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: camera_buffer.as_entire_binding(),
-        }],
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: psx_buffer.as_entire_binding(),
+            },
+        ],
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("scene layout"),
@@ -430,6 +471,19 @@ fn scene_pipeline(
         cache: None,
     });
     (pipeline, bind_group)
+}
+
+fn uniform_entry(binding: u32, visibility: wgpu::ShaderStages) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Uniform,
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    }
 }
 
 fn blit_pipeline(
