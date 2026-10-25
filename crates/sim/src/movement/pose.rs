@@ -38,6 +38,13 @@ impl Pose {
         self.pitch
     }
 
+    /// Unit vector the view looks along.
+    pub fn forward(&self) -> Vec3 {
+        let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
+        let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
+        Vec3::new(-sin_yaw * cos_pitch, sin_pitch, -cos_yaw * cos_pitch)
+    }
+
     /// Blends toward `other`; `alpha` is clamped into `0..=1`, and a
     /// non-finite one counts as `0`. Yaw takes the short way around, so a
     /// turn across ±π does not spin the view the long way.

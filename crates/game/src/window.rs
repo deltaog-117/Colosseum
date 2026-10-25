@@ -5,11 +5,14 @@ use std::time::Instant;
 
 use render::Renderer;
 use render::camera::{Camera, Projection};
+use render::mesh::Mesh;
 use render::resolution::RenderResolution;
 
+use glam::Vec3;
 use sim::input::{Axis, Command, Event, InputState};
 use sim::movement::{Player, Pose};
 use sim::tick::TickRate;
+use sim::weapon::Launcher;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -21,6 +24,10 @@ use crate::game_loop::GameLoop;
 use crate::level::{self, Level};
 
 const TITLE: &str = "fps-3d-game";
+
+/// Half the edge of the cube that stands in for a rocket, until there is art.
+const ROCKET_HALF_SIZE: f32 = 0.12;
+const ROCKET_COLOR: [f32; 3] = [1.0, 0.45, 0.1];
 
 pub(crate) fn run() -> Result<(), Box<dyn std::error::Error>> {
     let event_loop = EventLoop::new()?;
@@ -37,6 +44,7 @@ struct App {
     camera: Camera,
     level: Level,
     player: Player,
+    launcher: Launcher,
     /// The player's pose one tick ago, the start of the interpolation.
     previous: Pose,
     game_loop: GameLoop,
@@ -48,8 +56,27 @@ struct App {
 }
 
 /// The part of a command that is visible in the title.
-fn intent(command: &Command) -> (Axis, Axis, bool) {
-    (command.forward(), command.strafe(), command.jump())
+fn intent(command: &Command) -> (Axis, Axis, bool, bool) {
+    (
+        command.forward(),
+        command.strafe(),
+        command.jump(),
+        command.fire(),
+    )
+}
+
+/// One small cube per rocket, placed between its last two ticks. A rocket
+/// whose cube cannot be built is skipped rather than drawn wrong.
+fn rocket_meshes(launcher: &Launcher, alpha: f32) -> Vec<Mesh> {
+    launcher
+        .projectiles()
+        .iter()
+        .filter_map(|rocket| {
+            let center = rocket.position_at(alpha);
+            let half = Vec3::splat(ROCKET_HALF_SIZE);
+            Mesh::cuboid(center - half, center + half, ROCKET_COLOR)
+        })
+        .collect()
 }
 
 impl App {
@@ -66,6 +93,7 @@ impl App {
             camera,
             level,
             player,
+            launcher: Launcher::new(rate),
             previous: pose,
             game_loop: GameLoop::new(rate, Instant::now()),
             rate,
@@ -125,12 +153,21 @@ impl App {
         self.ticks += u64::from(advance.ticks);
 
         let intent_before = intent(&self.command);
+        let ammo_before = self.launcher.ammo();
         for _ in 0..advance.ticks {
             self.command = self.input.take_command();
             if let Some(pose) = self.player.pose() {
                 self.previous = pose;
             }
             self.player.step(&self.command, self.level.world());
+            self.launcher.step(self.level.world());
+            if self.command.fire()
+                && let Some(aim) = self.player.pose()
+            {
+                // A denied shot (cooling down, empty) is normal play; the
+                // reason will drive a click sound and the HUD later.
+                let _denied = self.launcher.try_fire(&aim);
+            }
         }
 
         // Drawn between the last two ticks, so motion stays smooth when the
@@ -143,16 +180,20 @@ impl App {
         // The title doubles as a heartbeat and input readout until there is
         // anything to render or move.
         if let Some(window) = &self.window
-            && (self.ticks / hz != seconds_before || intent(&self.command) != intent_before)
+            && (self.ticks / hz != seconds_before
+                || intent(&self.command) != intent_before
+                || self.launcher.ammo() != ammo_before)
         {
-            let (forward, strafe, jump) = intent(&self.command);
+            let (forward, strafe, jump, fire) = intent(&self.command);
             window.set_title(&format!(
-                "{TITLE} - tick {} - fwd {forward:?} strafe {strafe:?} jump {jump}",
-                self.ticks
+                "{TITLE} - tick {} - fwd {forward:?} strafe {strafe:?} jump {jump} fire {fire} - ammo {}",
+                self.ticks,
+                self.launcher.ammo()
             ));
         }
 
         if let Some(renderer) = &mut self.renderer {
+            renderer.set_transient_meshes(&rocket_meshes(&self.launcher, advance.alpha));
             renderer.render(&self.camera);
         }
     }
@@ -206,6 +247,11 @@ impl ApplicationHandler for App {
                 state: ElementState::Pressed,
                 ..
             } if !self.grabbed => self.grab_cursor(),
+            WindowEvent::MouseInput { button, state, .. } => {
+                if let Some(input) = device_input::mouse_button(button, state) {
+                    self.input.apply(input);
+                }
+            }
             WindowEvent::Focused(false) => {
                 self.input.apply(Event::FocusLost);
                 self.release_cursor();

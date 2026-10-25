@@ -11,16 +11,19 @@ pub enum Button {
     Right,
     /// Jump.
     Jump,
+    /// Fire the weapon.
+    Fire,
 }
 
 impl Button {
     /// Every button, for exhaustive iteration.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Forward,
         Self::Back,
         Self::Left,
         Self::Right,
         Self::Jump,
+        Self::Fire,
     ];
 
     fn bit(self) -> u8 {

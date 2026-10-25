@@ -54,7 +54,7 @@ fn spawn(x: f32, y: f32, z: f32, world: &World) -> Option<Player> {
     Player::try_spawn(Vec3::new(x, y, z), world, TickRate::DEFAULT).ok()
 }
 
-// The jump bit is the highest of `Button::ALL`.
+// The jump bit is the highest that moves the player; fire sits above it.
 const ALL_BUTTONS: u8 = 0b1_1111;
 const WITHOUT_JUMP: u8 = 0b0_1111;
 

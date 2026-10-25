@@ -46,3 +46,15 @@ fn lerp_clamps_alpha() {
     assert_eq!(a.lerp(&b, 1.0).eye(), b.eye());
     assert_eq!(a.lerp(&b, 7.0).eye(), b.eye());
 }
+
+#[test]
+fn forward_follows_yaw_and_pitch() {
+    let close = |a: Vec3, b: Vec3| (a - b).length() < 1.0e-6;
+    assert!(close(pose(Vec3::ZERO, 0.0, 0.0).forward(), Vec3::NEG_Z));
+    // A positive yaw turns left, a positive pitch looks up.
+    assert!(close(
+        pose(Vec3::ZERO, PI / 2.0, 0.0).forward(),
+        Vec3::NEG_X
+    ));
+    assert!(close(pose(Vec3::ZERO, 0.0, PI / 2.0).forward(), Vec3::Y));
+}

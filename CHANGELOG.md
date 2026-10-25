@@ -70,6 +70,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit and property tests for the loader: colliders contain every placed
   vertex, axis-aligned transforms keep the volume, turns off the axes are
   rejected, and malformed levels fail with an error naming the node.
+- `sim::collision`: `World::cast`, an exact segment-versus-box test that
+  returns the first hit with its fraction, point and face normal. A very
+  fast mover cannot tunnel a thin wall, and the same call will serve
+  hitscan weapons and bot line of sight.
+- `sim::weapon`: a rocket `Launcher` with ammo (10), a cooldown (0.8 s),
+  and projectiles that fly at 25 m/s for up to 5 s, leaving the eye along
+  the view. A rocket that meets a solid reports a `Detonation` (position,
+  face normal, damage 100) for one tick. A refused shot returns a `Denied`
+  reason (empty, cooling, too many in flight). Tuning constants live in
+  `sim::weapon::tuning`.
+- `sim::input`: a `Fire` button and `Command::fire`, held or tapped like
+  jump.
+- `sim::movement::Pose::forward`: the unit view direction.
+- `render::Renderer::set_transient_meshes`: short-lived meshes, such as
+  projectiles, that are replaced on every call.
+- `game`: left mouse fires; each rocket is drawn as a small orange cube
+  between its last two ticks, and the title shows the ammo left.
+- Unit and property tests for the above: hits lie on the segment and not
+  inside a solid, a miss never enters a solid, ammo is conserved, shots
+  are never closer than the cooldown, rockets never end up inside a solid,
+  and rockets in open air fly straight at constant speed.
 
 ### Changed
 - Mouse look now turns the player in `sim` rather than the camera in

@@ -109,6 +109,7 @@ pub struct Renderer {
     blit_pipeline: wgpu::RenderPipeline,
     blit_bind_group: wgpu::BindGroup,
     meshes: Vec<GpuMesh>,
+    transient: Vec<GpuMesh>,
 }
 
 impl Renderer {
@@ -170,11 +171,24 @@ impl Renderer {
             blit_pipeline,
             blit_bind_group,
             meshes: Vec::new(),
+            transient: Vec::new(),
         })
     }
 
     /// Copies a mesh to the GPU; it is drawn on every later frame.
     pub fn add_mesh(&mut self, mesh: &Mesh) {
+        let uploaded = self.upload(mesh);
+        self.meshes.push(uploaded);
+    }
+
+    /// Replaces the short-lived meshes, such as projectiles, which are drawn
+    /// until the next call. They are uploaded again on every call, which is fine for
+    /// a handful of small meshes and not for anything bigger.
+    pub fn set_transient_meshes(&mut self, meshes: &[Mesh]) {
+        self.transient = meshes.iter().map(|mesh| self.upload(mesh)).collect();
+    }
+
+    fn upload(&self, mesh: &Mesh) -> GpuMesh {
         let vertices = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -189,12 +203,12 @@ impl Renderer {
                 contents: bytemuck::cast_slice(mesh.indices()),
                 usage: wgpu::BufferUsages::INDEX,
             });
-        self.meshes.push(GpuMesh {
+        GpuMesh {
             vertices,
             indices,
             // `Mesh` guarantees the count fits: its indices address u32 vertices.
             index_count: mesh.indices().len() as u32,
-        });
+        }
     }
 
     /// Follows the window's new inner size. A zero side (minimized) is
@@ -272,7 +286,7 @@ impl Renderer {
             });
             pass.set_pipeline(&self.scene_pipeline);
             pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            for mesh in &self.meshes {
+            for mesh in self.meshes.iter().chain(&self.transient) {
                 pass.set_vertex_buffer(0, mesh.vertices.slice(..));
                 pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..mesh.index_count, 0, 0..1);

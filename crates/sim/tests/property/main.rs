@@ -4,3 +4,4 @@ mod collision;
 mod input;
 mod movement;
 mod tick;
+mod weapon;

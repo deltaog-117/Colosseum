@@ -57,3 +57,10 @@ proptest! {
         prop_assert!(turned <= angle_gap(b.yaw(), a.yaw()) + 1.0e-4);
     }
 }
+
+proptest! {
+    #[test]
+    fn forward_is_a_unit_vector(pose in poses()) {
+        prop_assert!((pose.forward().length() - 1.0).abs() < 1.0e-5);
+    }
+}

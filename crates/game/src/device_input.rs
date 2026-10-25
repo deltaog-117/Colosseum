@@ -1,7 +1,7 @@
 //! Translates winit device events into the simulation's input events.
 
 use sim::input::{Button, Event};
-use winit::event::ElementState;
+use winit::event::{ElementState, MouseButton};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 /// Physical keys, not layout-dependent ones, so WASD keeps its shape on AZERTY.
@@ -25,6 +25,17 @@ pub(crate) fn key_event(key: PhysicalKey, state: ElementState) -> Option<Event> 
     Some(match state {
         ElementState::Pressed => Event::Press(button),
         ElementState::Released => Event::Release(button),
+    })
+}
+
+/// The left button fires; the others are unbound.
+pub(crate) fn mouse_button(button: MouseButton, state: ElementState) -> Option<Event> {
+    if button != MouseButton::Left {
+        return None;
+    }
+    Some(match state {
+        ElementState::Pressed => Event::Press(Button::Fire),
+        ElementState::Released => Event::Release(Button::Fire),
     })
 }
 
@@ -67,6 +78,22 @@ mod tests {
         assert_eq!(press(KeyCode::KeyQ), None);
         let unidentified = PhysicalKey::Unidentified(NativeKeyCode::Unidentified);
         assert_eq!(key_event(unidentified, ElementState::Pressed), None);
+    }
+
+    #[test]
+    fn the_left_mouse_button_fires() {
+        assert_eq!(
+            mouse_button(MouseButton::Left, ElementState::Pressed),
+            Some(Event::Press(Button::Fire))
+        );
+        assert_eq!(
+            mouse_button(MouseButton::Left, ElementState::Released),
+            Some(Event::Release(Button::Fire))
+        );
+        assert_eq!(
+            mouse_button(MouseButton::Right, ElementState::Pressed),
+            None
+        );
     }
 
     #[test]

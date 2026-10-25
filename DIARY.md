@@ -571,3 +571,81 @@ triangle collision exists.
 | Date | Update | Author |
 |------|--------|--------|
 | 2026-10-25 | Initial entry | deltaog-117 |
+
+### Feature: Projectile Weapon
+
+**Date:** 2026-10-25
+**Status:** Confirmed
+
+#### Context / Background
+
+Second v0.2 item and the core of the game. Hit detection, bots, rules
+and the HUD ammo count all build on a weapon that spawns, flies and
+detonates deterministically inside `sim`.
+
+#### Options Considered
+
+**Option A: Small box moved with the existing `World::sweep`**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Reuses tested collision <br> • Smallest diff |
+| **Disadvantages** | • Per-axis sweeps can clip corners <br> • Speed and size need a cap <br> • No reuse for hitscan or line of sight |
+| **Implementation Difficulty** | Easy |
+
+**Option B: Segment cast (slab test), the projectile is a point**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Exact first hit, point and normal at any speed <br> • Reusable for hitscan and bot line of sight |
+| **Disadvantages** | • One new module and its property tests |
+| **Implementation Difficulty** | Medium |
+
+**Option C: Generic entity store (e.g. `hecs`)**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Later entities slot in without new containers |
+| **Disadvantages** | • New dependency <br> • Abstraction before a second entity type exists <br> • Larger diff in `game` |
+| **Implementation Difficulty** | Hard |
+
+#### Decision & Rationale
+
+**Chosen: Option B.** It is the only option that gives the exact first-hit
+point at rocket speeds, which is where splash damage will start, and the
+cast is reused by hitscan and bot line of sight. Option A would likely be
+replaced when hit detection arrives.
+
+**Trade-offs accepted:** one more collision primitive to maintain.
+
+#### Implementation Notes
+
+- `World::cast` lives in `sim::collision::ray`. A segment that starts on
+  a face and leaves, or only grazes an edge, hits nothing; one that starts
+  inside a solid hits at fraction 0 with the normal pointing back along
+  the segment, so a rocket fired from inside geometry explodes at once.
+- `Launcher` owns the ammo, cooldown and a bounded pool of `Projectile`s.
+  The projectile list and the detonation list are reused every tick, so
+  stepping does not allocate. Call order per tick is `step`, then
+  `try_fire`.
+- Rockets leave the eye, not a muzzle offset, so a shot against a wall
+  cannot skip past it. Rockets do not hit the player yet.
+- Speeds are in meters: 25 m/s is about 2.8x the player's top speed,
+  taken from Quake's ratio of rocket to run speed rather than its raw 900
+  units. The cooldown rounds up to whole ticks (96 at 120 Hz).
+- A `Denied` reason is returned for refused shots. `game` ignores it for
+  now; the HUD and audio will use it.
+- Left mouse fires, held or tapped like jump. The click that grabs the
+  cursor does not fire. Rockets are drawn as cubes through
+  `Renderer::set_transient_meshes`, which uploads buffers every frame;
+  instancing will replace it when the shader pass lands.
+- Not done: a benchmark (scheduled with the collision regression gate),
+  logging (no logging infrastructure yet), applying damage (next item),
+  and a run of the game to look at the rockets; `scripts/check` does not
+  open a window.
+
+#### Review / Update Log
+
+| Date | Update | Author |
+|------|--------|--------|
+| 2026-10-25 | Initial entry | deltaog-117 |

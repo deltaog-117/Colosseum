@@ -35,6 +35,7 @@ fn is_active(command: &Command, button: Button) -> bool {
         Button::Left => command.strafe() == Axis::Negative,
         Button::Right => command.strafe() == Axis::Positive,
         Button::Jump => command.jump(),
+        Button::Fire => command.fire(),
     }
 }
 

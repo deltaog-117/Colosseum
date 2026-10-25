@@ -65,15 +65,17 @@ pub struct Command {
     forward: Axis,
     strafe: Axis,
     jump: bool,
+    fire: bool,
     look: Look,
 }
 
 impl Command {
-    pub(super) fn new(forward: Axis, strafe: Axis, jump: bool, look: Look) -> Self {
+    pub(super) fn new(forward: Axis, strafe: Axis, jump: bool, fire: bool, look: Look) -> Self {
         Self {
             forward,
             strafe,
             jump,
+            fire,
             look,
         }
     }
@@ -91,6 +93,11 @@ impl Command {
     /// Whether jump was held, or pressed since the previous command.
     pub fn jump(&self) -> bool {
         self.jump
+    }
+
+    /// Whether fire was held, or pressed since the previous command.
+    pub fn fire(&self) -> bool {
+        self.fire
     }
 
     /// Mouse movement since the previous command.

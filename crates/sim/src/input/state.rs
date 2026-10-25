@@ -71,6 +71,7 @@ impl InputState {
             Axis::from_pair(active(Button::Back), active(Button::Forward)),
             Axis::from_pair(active(Button::Left), active(Button::Right)),
             active(Button::Jump),
+            active(Button::Fire),
             Look::new(self.look_dx, self.look_dy),
         );
         self.pressed.clear();
