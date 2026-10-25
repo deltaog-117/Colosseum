@@ -133,6 +133,19 @@ impl Camera {
         }
     }
 
+    /// Places the view exactly, for state that comes from the simulation.
+    ///
+    /// Ignored entirely if any argument is not finite, so one bad frame
+    /// cannot poison the view for good.
+    pub fn set_view(&mut self, position: Vec3, yaw: f32, pitch: f32) {
+        if !(position.is_finite() && yaw.is_finite() && pitch.is_finite()) {
+            return;
+        }
+        self.position = position;
+        self.yaw = wrap_angle(yaw);
+        self.pitch = pitch.clamp(-PITCH_LIMIT, PITCH_LIMIT);
+    }
+
     /// Unit vector the camera looks along.
     pub fn forward(&self) -> Vec3 {
         let (sin_yaw, cos_yaw) = self.yaw.sin_cos();

@@ -97,3 +97,29 @@ fn a_point_ahead_lands_inside_the_clip_volume() {
     assert!(ndc.x.abs() < 1e-5 && ndc.y.abs() < 1e-5, "{ndc}");
     assert!((0.0..=1.0).contains(&ndc.z), "{ndc}");
 }
+
+#[test]
+fn set_view_places_the_camera_exactly() {
+    let mut camera = camera();
+    camera.set_view(Vec3::new(4.0, 5.0, 6.0), 0.5, -0.25);
+    assert_eq!(camera.position(), Vec3::new(4.0, 5.0, 6.0));
+    assert_eq!((camera.yaw(), camera.pitch()), (0.5, -0.25));
+}
+
+#[test]
+fn set_view_ignores_non_finite_input() {
+    let mut camera = camera();
+    let before = camera;
+    camera.set_view(Vec3::new(f32::NAN, 0.0, 0.0), 0.5, 0.0);
+    camera.set_view(Vec3::ZERO, f32::INFINITY, 0.0);
+    camera.set_view(Vec3::ZERO, 0.0, f32::NAN);
+    assert_eq!(camera, before);
+}
+
+#[test]
+fn set_view_clamps_pitch_and_wraps_yaw() {
+    let mut camera = camera();
+    camera.set_view(Vec3::ZERO, 3.0 * PI, 10.0);
+    assert_eq!(camera.pitch(), PITCH_LIMIT);
+    assert!((-PI..=PI).contains(&camera.yaw()));
+}

@@ -31,6 +31,9 @@ Author: deltaog-117
 - ✅ Minimal renderer: `wgpu` scene pass into a 320x240 target, depth,
   first-person camera, nearest-neighbor blit; `game` shows a placeholder
   grey-box room with mouse look
+- ✅ Player movement and collision: Quake-style acceleration, friction,
+  air control and jumping in `sim`, swept box collision against the
+  grey-box room, and tick interpolation of the view
 
 ---
 
@@ -46,13 +49,13 @@ Author: deltaog-117
 - ✅ **Minimal renderer** – Draw colored static meshes with depth, a
   first-person camera, and a low-resolution offscreen target scaled with
   nearest-neighbor filtering.
-- **Grey-box room and player movement** – Quake-style acceleration,
+- ✅ **Grey-box room and player movement** – Quake-style acceleration,
   friction and jumping, with box collision against the room. Movement
   feel is the heart of an arena shooter.
-- **Simulation crate with no graphics dependency** – The sim knows
+- ✅ **Simulation crate with no graphics dependency** – The sim knows
   positions, hitboxes and states only, so art is swapped in later
   without touching game logic and the same code can run on a server.
-- **Project check command** – `scripts/check` wrapping format check,
+- ✅ **Project check command** – `scripts/check` wrapping format check,
   clippy and tests, plus property tests for movement invariants.
 
 ---
@@ -117,7 +120,10 @@ Author: deltaog-117
 
 ## 🎯 Next Actions (Immediate)
 
-1. **Player movement and grey-box room** – `crates/sim` movement and
-   collision, with property tests; consumes the input `Command`. Replaces
-   the placeholder room in `game::grey_box` and adds tick interpolation
-   to the renderer.
+v0.1 is complete. Pick the first v0.2 item:
+
+1. **Level geometry and collision** – glTF level meshes with collision
+   against them; the swept-box `World` in `sim::collision` is where the
+   triangle collision slots in.
+2. **Projectile weapon** – projectiles with speed, lifetime, cooldown,
+   ammo and damage; independent of the level work.

@@ -19,6 +19,7 @@ Author: deltaog-117
 | 2026-10-25 | Fixed-timestep loop | Pure accumulator in `sim/tick`, `winit` in `game`, 120 Hz | ✅ Confirmed |
 | 2026-10-25 | Input sampling | Device-neutral `Event` and `InputState` in `sim/input`, one `Command` per tick | ✅ Confirmed |
 | 2026-10-25 | Minimal renderer | Direct `wgpu`, scene into a low-res target, nearest-neighbor blit | ✅ Confirmed |
+| 2026-10-25 | Player movement and collision | Quake-style movement, per-axis swept AABB collision in `sim` | ✅ Confirmed |
 
 ---
 
@@ -392,6 +393,96 @@ verified by running the game, not by automated tests.
   (no measured hot path yet) and any automated test of the GPU code.
   `scripts/check` does not open a window, so the picture was checked by
   running the game only.
+
+#### Review / Update Log
+
+| Date | Update | Author |
+|------|--------|--------|
+| 2026-10-25 | Initial entry | deltaog-117 |
+
+---
+
+### Feature: Player Movement and Collision
+
+**Date:** 2026-10-25
+**Status:** Confirmed
+
+#### Context / Background
+
+The last open v0.1 item. Movement feel is the heart of an arena shooter,
+and the simulation has to stay free of graphics so art can change without
+touching game logic and the same code can later run on a server.
+
+#### Options Considered
+
+**Option A: Quake movement with per-axis swept box collision**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Small and easy to property-test <br> • Wall sliding comes for free <br> • Fits the box-only room |
+| **Disadvantages** | • Box solids only, so the collision half is replaced for glTF levels |
+| **Implementation Difficulty** | Easy |
+
+**Option B: Same movement with time-of-impact sweeps and slide-plane clipping**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Handles ramps and general planes <br> • Carries over to level geometry |
+| **Disadvantages** | • Much more math and corner cases <br> • More invariants to prove |
+| **Implementation Difficulty** | Hard |
+
+**Option C: `rapier3d` kinematic character controller**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Mature collision and slopes |
+| **Disadvantages** | • Heavy dependency in `sim` <br> • Not Quake feel <br> • Harder to keep deterministic |
+| **Implementation Difficulty** | Medium |
+
+#### Decision & Rationale
+
+**Chosen: Option A.** It gives the Quake feel at the lowest risk, and the
+v0.1 room is only boxes. Collision sits behind `World::sweep`, so level
+geometry can replace it without touching the movement code.
+
+**Trade-offs accepted:** no ramps or stairs until level geometry exists.
+
+#### Implementation Notes
+
+- `sim::collision`: `Aabb` is stored as center plus half extents, so
+  moving it never changes its size by rounding. `World::sweep` moves one
+  axis at a time and measures the gap to every solid beside the path, so
+  a step of any length stops at the nearest face instead of tunneling.
+  The box stops `SKIN` (0.1 mm) short; without it rounding could leave it
+  overlapping by a hair, and an overlapping box is stuck. A solid that
+  already overlaps or lies behind never blocks, so a box can back out.
+- `sim::movement`: `Player` follows Quake's order: turn, jump, then
+  friction and accelerate on the ground (jumping first skips friction, so
+  chained jumps keep their speed) or air-accelerate with a small speed cap
+  plus gravity in the air. The cap is what makes air-strafing curve a jump
+  without free steering. Wish direction is normalized, so diagonals are no
+  faster. Each axis is then swept in X, Z, Y order and a blocked axis loses
+  its velocity, which makes walls slide.
+- Ground detection probes 2 cm down and also snaps the player onto the
+  surface, so it never hovers inside the probe distance.
+- Per-axis speed is clamped to `TERMINAL_SPEED`, which keeps long falls
+  and strafe-jump chains finite. Ground speed is only bounded by
+  `MAX_SPEED` on the ground: running into a wall at an angle can slide
+  faster, as in Quake.
+- Units are meters and seconds; the constants are tuning values in
+  `sim::movement::tuning`, not settings.
+- Mouse look moved into `Player`, since movement needs the yaw. `PITCH_LIMIT`
+  and the wrap are duplicated from `render::camera`; a `game` test asserts
+  the limits match.
+- `Pose` is the eye position plus yaw and pitch. `lerp` takes the short
+  arc across ±π, and `game` renders `lerp(previous, current, alpha)`, one
+  tick behind the simulation, which is the usual price of smooth motion.
+- `game::grey_box` builds both the meshes and the collision world from
+  the same constants, so what is drawn is what is solid.
+- Not done: a benchmark (the roadmap schedules benchmarks with the tick
+  loop and collision regression gate), logging (no logging infrastructure
+  exists yet), stairs and ramps, and a check of the feel by running the
+  game; `scripts/check` does not open a window.
 
 #### Review / Update Log
 

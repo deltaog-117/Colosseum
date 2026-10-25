@@ -7,7 +7,9 @@ use render::Renderer;
 use render::camera::{Camera, Projection};
 use render::resolution::RenderResolution;
 
+use sim::collision::World;
 use sim::input::{Axis, Command, Event, InputState};
+use sim::movement::{Player, Pose};
 use sim::tick::TickRate;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, DeviceId, ElementState, KeyEvent, WindowEvent};
@@ -20,8 +22,6 @@ use crate::game_loop::GameLoop;
 use crate::grey_box;
 
 const TITLE: &str = "fps-3d-game";
-/// Radians of turn per device count; a tuning value, not a setting yet.
-const LOOK_SENSITIVITY: f32 = 0.0022;
 
 pub(crate) fn run() -> Result<(), Box<dyn std::error::Error>> {
     let event_loop = EventLoop::new()?;
@@ -36,6 +36,10 @@ struct App {
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     camera: Camera,
+    world: World,
+    player: Player,
+    /// The player's pose one tick ago, the start of the interpolation.
+    previous: Pose,
     game_loop: GameLoop,
     rate: TickRate,
     ticks: u64,
@@ -53,11 +57,17 @@ impl App {
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let rate = TickRate::DEFAULT;
         let projection = Projection::try_new(90f32.to_radians(), 0.05, 200.0)?;
-        let camera = Camera::new(grey_box::SPAWN, projection).ok_or("spawn point is not finite")?;
+        let world = grey_box::world();
+        let player = Player::try_spawn(grey_box::SPAWN, &world, rate)?;
+        let pose = player.pose().ok_or("spawn pose is not finite")?;
+        let camera = Camera::new(pose.eye(), projection).ok_or("spawn point is not finite")?;
         Ok(Self {
             window: None,
             renderer: None,
             camera,
+            world,
+            player,
+            previous: pose,
             game_loop: GameLoop::new(rate, Instant::now()),
             rate,
             ticks: 0,
@@ -118,10 +128,17 @@ impl App {
         let intent_before = intent(&self.command);
         for _ in 0..advance.ticks {
             self.command = self.input.take_command();
-            let look = self.command.look();
-            // Device Y grows downward and a positive yaw turns left, so both flip.
-            self.camera
-                .turn(-look.dx() * LOOK_SENSITIVITY, -look.dy() * LOOK_SENSITIVITY);
+            if let Some(pose) = self.player.pose() {
+                self.previous = pose;
+            }
+            self.player.step(&self.command, &self.world);
+        }
+
+        // Drawn between the last two ticks, so motion stays smooth when the
+        // frame rate and the tick rate do not line up.
+        if let Some(current) = self.player.pose() {
+            let view = self.previous.lerp(&current, advance.alpha);
+            self.camera.set_view(view.eye(), view.yaw(), view.pitch());
         }
 
         // The title doubles as a heartbeat and input readout until there is
@@ -213,5 +230,16 @@ impl ApplicationHandler for App {
         if let Some(window) = &self.window {
             window.request_redraw();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_sim_and_the_camera_agree_on_the_pitch_limit() {
+        assert_eq!(
+            sim::movement::tuning::PITCH_LIMIT,
+            render::camera::PITCH_LIMIT
+        );
     }
 }

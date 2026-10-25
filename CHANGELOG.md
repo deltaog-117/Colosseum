@@ -43,3 +43,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `game`: the window now renders a placeholder grey-box room, and mouse
   look turns the camera.
 - Unit and property tests for the camera, resolution and mesh modules.
+- `sim::collision`: a validated `Aabb`, a `World` of solid boxes and a
+  per-axis `sweep` that stops a moving box a hair short of any solid, so
+  it cannot tunnel at any speed.
+- `sim::movement`: a `Player` with Quake-style ground friction, strafe
+  acceleration, capped air acceleration (air-strafing), gravity and
+  jumping (a tap shorter than a tick still jumps), plus a `Pose` that
+  interpolates the view between ticks the short way around the yaw wrap.
+  Tuning constants live in `sim::movement::tuning`.
+- `render::camera::Camera::set_view`: places the view exactly from
+  simulation state.
+- `game`: the player now walks the grey-box room with collision (the
+  walls, floor, ceiling and pillars are solid), and the view is
+  interpolated between ticks.
+- Unit and property tests for collision and movement: the player never
+  ends up inside a solid, state stays finite and within its limits,
+  walking never exceeds top speed, and identical inputs replay to an
+  identical player.
+
+### Changed
+- Mouse look now turns the player in `sim` rather than the camera in
+  `game`; the look sensitivity constant moved with it.
+- `sim` now depends on `glam` for vector math.
