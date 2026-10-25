@@ -43,6 +43,9 @@ Author: deltaog-117
 - ✅ Game rules: several spawn points with far-from-death respawns, health
   and ammo pickups, kills/deaths/frags and a repeating 180 s round
   (`sim::rules`)
+- ✅ HUD: health, rockets, round clock, frags, crosshair and a Tab
+  scoreboard drawn from a built-in bitmap font into the low-res target
+  (`render::hud`, `game::hud`)
 
 ---
 
@@ -87,7 +90,7 @@ Author: deltaog-117
   testable alone. Skeletal animation waits until here, as it is the
   largest single renderer piece.
 - ✅ **Game rules** – Spawns, respawns, scoring, pickups and a match timer.
-- **HUD** – Health, ammo, crosshair and scoreboard via a font atlas and
+- ✅ **HUD** – Health, ammo, crosshair and scoreboard via a font atlas and
   quad batching.
 - **Performance benchmarks** – Benchmarks for the tick loop and
   collision with a 5% regression gate.
@@ -131,12 +134,13 @@ Author: deltaog-117
 
 ## 🎯 Next Actions (Immediate)
 
-The first four v0.2 items are done. Pick the next one:
+The first five v0.2 items are done. Pick the next one:
 
-1. **HUD** – health, ammo, crosshair, time and score on screen instead of in
-   the title; `sim::rules` already exposes all of it.
-2. **PS1 shader pass** – vertex snapping, affine texturing, dithering and
+1. **PS1 shader pass** – vertex snapping, affine texturing, dithering and
    fog; the loader already supplies per-vertex color to build on.
-3. **Bots** – navigation, aiming and basic behavior; they are the first
+2. **Bots** – navigation, aiming and basic behavior; they are the first
    other bodies to take rockets (`Launcher::step_against` is ready) and to
-   earn kills (`Round::record_kill` is ready).
+   earn kills (`Round::record_kill` is ready). The scoreboard gets its
+   extra rows here.
+3. **Performance benchmarks** – the tick loop and collision, with a 5%
+   regression gate.

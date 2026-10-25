@@ -124,6 +124,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   point, pickups cannot be retaken before their wait, phases alternate and
   the score is frozen between rounds, and healing and loading never pass
   their caps.
+- `render::hud`: a `HudBatch` of rectangles and text turned into textured
+  quads, and a built-in 5x7 bitmap font (digits, letters and a few
+  symbols) packed into an `R8` atlas, so the HUD needs no asset files.
+- `Renderer::set_hud` and a HUD pass drawn into the low-resolution target
+  with alpha blending, before the blit.
+- `game::hud`: health with a gauge, rockets, round clock, frags, a
+  crosshair, `YOU DIED` and `ROUND OVER` messages, and a scoreboard shown
+  while Tab is held and between rounds.
+- Unit and property tests for the above: any character maps inside the
+  atlas, batches stay whole, finite and within their quad cap, text width
+  scales linearly, and every HUD vertex stays on screen for any game state.
 
 ### Changed
 - Mouse look now turns the player in `sim` rather than the camera in
@@ -137,3 +148,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - `game::grey_box`: replaced by `game::level` and `arena.glb`.
+- The window title readout (ticks, input, ammo, health, round and score),
+  replaced by the HUD; the title is now just `fps-3d-game`.

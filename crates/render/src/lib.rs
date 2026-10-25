@@ -1,7 +1,8 @@
-//! Rendering: wgpu pipelines, camera and the low-resolution target.
+//! Rendering: wgpu pipelines, camera, the low-resolution target and the HUD.
 
 pub mod camera;
 mod gpu;
+pub mod hud;
 pub mod mesh;
 pub mod resolution;
 

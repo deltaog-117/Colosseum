@@ -5,14 +5,15 @@ use std::time::Instant;
 
 use render::Renderer;
 use render::camera::{Camera, Projection};
+use render::hud::HudBatch;
 use render::mesh::Mesh;
 use render::resolution::RenderResolution;
 
 use glam::Vec3;
 use sim::combat::{self, Health, Outcome};
-use sim::input::{Axis, Command, Event, InputState};
+use sim::input::{Command, Event, InputState};
 use sim::movement::{Player, Pose};
-use sim::rules::{Phase, Pickup, PickupKind, Round, Transition};
+use sim::rules::{Pickup, PickupKind, Round, Transition};
 use sim::tick::TickRate;
 use sim::weapon::Launcher;
 use winit::application::ApplicationHandler;
@@ -23,6 +24,7 @@ use winit::window::{CursorGrabMode, Window, WindowId};
 
 use crate::device_input;
 use crate::game_loop::GameLoop;
+use crate::hud::{self, HudView};
 use crate::level::{self, Level};
 
 const TITLE: &str = "fps-3d-game";
@@ -58,25 +60,14 @@ struct App {
     previous: Pose,
     game_loop: GameLoop,
     rate: TickRate,
-    ticks: u64,
     input: InputState,
     command: Command,
     grabbed: bool,
-}
-
-/// The part of a command that is visible in the title.
-fn intent(command: &Command) -> (Axis, Axis, bool, bool) {
-    (
-        command.forward(),
-        command.strafe(),
-        command.jump(),
-        command.fire(),
-    )
-}
-
-/// What the title shows of the round, so it is rewritten when it changes.
-fn round_readout(round: &Round) -> (Phase, u32, i64) {
-    (round.phase(), round.seconds_left(), round.score().frags())
+    /// The scoreboard key is held. Interface state, not a game command, so
+    /// it never reaches the simulation.
+    show_scoreboard: bool,
+    /// Rebuilt every frame; kept so its memory is reused.
+    hud: HudBatch,
 }
 
 /// One cube per pickup that is ready to be taken, standing on its base.
@@ -137,10 +128,11 @@ impl App {
             previous: pose,
             game_loop: GameLoop::new(rate, Instant::now()),
             rate,
-            ticks: 0,
             input: InputState::new(),
             command: Command::default(),
             grabbed: false,
+            show_scoreboard: false,
+            hud: HudBatch::new(),
         })
     }
 
@@ -240,6 +232,9 @@ impl App {
         {
             self.release_cursor();
         }
+        if event.physical_key == PhysicalKey::Code(KeyCode::Tab) {
+            self.show_scoreboard = event.state == ElementState::Pressed;
+        }
         // Held keys are already tracked; repeats add nothing.
         if event.repeat {
             return;
@@ -251,14 +246,7 @@ impl App {
 
     fn run_frame(&mut self) {
         let advance = self.game_loop.frame(Instant::now());
-        let hz = u64::from(self.rate.hz());
-        let seconds_before = self.ticks / hz;
-        self.ticks += u64::from(advance.ticks);
 
-        let intent_before = intent(&self.command);
-        let ammo_before = self.launcher.ammo();
-        let health_before = self.health.points();
-        let round_before = round_readout(&self.round);
         for _ in 0..advance.ticks {
             self.command = self.input.take_command();
             let transition = self.round.step();
@@ -281,7 +269,7 @@ impl App {
                 && let Some(aim) = self.player.pose()
             {
                 // A denied shot (cooling down, empty) is normal play; the
-                // reason will drive a click sound and the HUD later.
+                // reason will drive a click sound later.
                 let _denied = self.launcher.try_fire(&aim);
             }
             if self.health.step() {
@@ -296,36 +284,26 @@ impl App {
             self.camera.set_view(view.eye(), view.yaw(), view.pitch());
         }
 
-        // The title doubles as a heartbeat and input readout until there is
-        // anything to render or move.
-        if let Some(window) = &self.window
-            && (self.ticks / hz != seconds_before
-                || intent(&self.command) != intent_before
-                || self.launcher.ammo() != ammo_before
-                || self.health.points() != health_before
-                || round_readout(&self.round) != round_before)
-        {
-            let (forward, strafe, jump, fire) = intent(&self.command);
-            let score = self.round.score();
-            let round = match self.round.phase() {
-                Phase::Playing => format!("time {}", self.round.seconds_left()),
-                Phase::Intermission => format!("ROUND OVER, next in {}", self.round.seconds_left()),
-            };
-            window.set_title(&format!(
-                "{TITLE} - tick {} - fwd {forward:?} strafe {strafe:?} jump {jump} fire {fire} - ammo {} - health {} - kills {} deaths {} frags {} - {round}",
-                self.ticks,
-                self.launcher.ammo(),
-                self.health.points(),
-                score.kills(),
-                score.deaths(),
-                score.frags()
-            ));
-        }
+        let score = self.round.score();
+        hud::draw(
+            &mut self.hud,
+            &HudView {
+                health: self.health.points(),
+                ammo: self.launcher.ammo(),
+                seconds_left: self.round.seconds_left(),
+                phase: self.round.phase(),
+                kills: score.kills(),
+                deaths: score.deaths(),
+                frags: score.frags(),
+                scoreboard: self.show_scoreboard,
+            },
+        );
 
         if let Some(renderer) = &mut self.renderer {
             let mut transient = rocket_meshes(&self.launcher, advance.alpha);
             transient.extend(pickup_meshes(&self.pickups));
             renderer.set_transient_meshes(&transient);
+            renderer.set_hud(&self.hud);
             renderer.render(&self.camera);
         }
     }
@@ -386,6 +364,8 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Focused(false) => {
                 self.input.apply(Event::FocusLost);
+                // The release would go to another window.
+                self.show_scoreboard = false;
                 self.release_cursor();
             }
             WindowEvent::RedrawRequested => self.run_frame(),

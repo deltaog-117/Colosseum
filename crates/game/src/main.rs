@@ -2,6 +2,7 @@
 
 mod device_input;
 mod game_loop;
+mod hud;
 mod level;
 mod window;
 

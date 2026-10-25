@@ -7,8 +7,13 @@ use std::mem::size_of;
 use wgpu::util::DeviceExt;
 
 use crate::camera::Camera;
+use crate::hud::HudBatch;
 use crate::mesh::{Mesh, Vertex};
 use crate::resolution::RenderResolution;
+
+mod hud;
+
+use hud::HudPass;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const CLEAR_COLOR: wgpu::Color = wgpu::Color {
@@ -106,6 +111,7 @@ pub struct Renderer {
     scene_pipeline: wgpu::RenderPipeline,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    hud: HudPass,
     blit_pipeline: wgpu::RenderPipeline,
     blit_bind_group: wgpu::BindGroup,
     meshes: Vec<GpuMesh>,
@@ -156,6 +162,7 @@ impl Renderer {
         });
         let (scene_pipeline, camera_bind_group) =
             scene_pipeline(&device, config.format, &camera_buffer);
+        let hud = HudPass::new(&device, &queue, config.format, resolution);
         let (blit_pipeline, blit_bind_group) = blit_pipeline(&device, config.format, &target);
 
         Ok(Self {
@@ -168,6 +175,7 @@ impl Renderer {
             scene_pipeline,
             camera_buffer,
             camera_bind_group,
+            hud,
             blit_pipeline,
             blit_bind_group,
             meshes: Vec::new(),
@@ -186,6 +194,12 @@ impl Renderer {
     /// a handful of small meshes and not for anything bigger.
     pub fn set_transient_meshes(&mut self, meshes: &[Mesh]) {
         self.transient = meshes.iter().map(|mesh| self.upload(mesh)).collect();
+    }
+
+    /// Replaces the HUD, which is drawn over the scene on every frame until
+    /// the next call.
+    pub fn set_hud(&mut self, batch: &HudBatch) {
+        self.hud.upload(&self.queue, batch);
     }
 
     fn upload(&self, mesh: &Mesh) -> GpuMesh {
@@ -291,6 +305,27 @@ impl Renderer {
                 pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..mesh.index_count, 0, 0..1);
             }
+        }
+
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("hud"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.target.color,
+                    depth_slice: None,
+                    resolve_target: None,
+                    // Keeps the scene underneath.
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            self.hud.draw(&mut pass);
         }
 
         {

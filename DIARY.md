@@ -811,3 +811,85 @@ for bots.
 | Date | Update | Author |
 |------|--------|--------|
 | 2026-10-25 | Initial entry | deltaog-117 |
+
+---
+
+### Feature: HUD
+
+**Date:** 2026-10-25
+**Status:** Confirmed
+
+#### Context / Background
+
+Fifth v0.2 item. Health, ammo, time and score lived in the window title,
+and the player had no crosshair. `sim::rules` already exposed all of the
+numbers; the renderer had two passes (scene, blit) and no textures or text.
+
+#### Options Considered
+
+**Option A: HUD pass into the 320x240 target, with a quad batcher and a built-in 8x8 bitmap font atlas**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Matches the PS1 look <br> • No new dependencies or assets <br> • Reuses the existing target and letterbox |
+| **Disadvantages** | • Chunky text at 320x240 <br> • The glyph table is hand-written |
+| **Implementation Difficulty** | Medium |
+
+**Option B: Same batcher and font, drawn after the blit at window resolution**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Crisp text at any window size |
+| **Disadvantages** | • Two coordinate systems <br> • Breaks the low-res look <br> • The letterbox needs extra handling |
+| **Implementation Difficulty** | Medium |
+
+**Option C: `egui` or `glyphon`**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Fastest route to a scoreboard and nice text |
+| **Disadvantages** | • Heavy dependency tied to the `wgpu` 30 version <br> • Off-style <br> • Against the small-helper-crates rule |
+| **Implementation Difficulty** | Medium |
+
+#### Decision & Rationale
+
+**Chosen: Option A.** The roadmap already described the HUD as a font
+atlas plus quad batching, and drawing into the low-res target gives the
+look for free. The font is pure data, so the layout can be property-tested.
+
+**Trade-offs accepted:** text is blocky and only covers digits, letters and
+`: - / . + ! %`; anything else draws as `?`, and lowercase draws as upper.
+
+#### Implementation Notes
+
+- `render::hud::HudBatch` holds whole quads (four vertices each), is capped
+  at `MAX_QUADS`, and ignores non-finite or degenerate input instead of
+  storing it, so the GPU buffers (sized for the cap) cannot overflow. Text
+  snaps to whole pixels so scaled glyphs keep even texels.
+- `render::hud::font` packs 45 glyphs plus a solid cell into a 64x48 `R8`
+  atlas built at startup. Rectangles sample the middle of the solid cell,
+  so one pipeline and one draw call serve both rectangles and text.
+- `Renderer::set_hud` uploads the batch; `render` runs a third pass
+  (`LoadOp::Load` on the scene target, alpha blending) before the blit. The
+  index buffer is built once; only vertices are rewritten per frame.
+- `game::hud` maps a `HudView` (plain numbers copied from the match) to
+  quads: health with a gauge, rockets, clock, frags, crosshair, `YOU DIED`,
+  `ROUND OVER`, and a scoreboard. The scoreboard shows while Tab is held and
+  always between rounds. Tab is interface state kept in `App`, so `sim`
+  input is untouched. Counts on the scoreboard are clamped to four digits.
+- The title is a plain `fps-3d-game` again, and the tick counter and input
+  readout are gone with it.
+- Checked: property tests for the font and batch (any `char` maps inside
+  the atlas, batches stay whole and finite, widths scale linearly) and a
+  property test that every HUD vertex stays on the 320x240 screen for any
+  game state. I started the game for ten seconds and saw no shader or
+  pipeline error, but I have not looked at the picture, so the layout and
+  colors are unreviewed by eye.
+- Not done: no benchmark; the scoreboard has one row until bots exist; no
+  damage flash, pickup messages or kill feed.
+
+#### Review / Update Log
+
+| Date | Update | Author |
+|------|--------|--------|
+| 2026-10-25 | Initial entry | deltaog-117 |
