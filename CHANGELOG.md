@@ -60,8 +60,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ends up inside a solid, state stays finite and within its limits,
   walking never exceeds top speed, and identical inputs replay to an
   identical player.
+- `game::level`: loads a glTF binary (`.glb`) into render meshes, a
+  collision `World` and a spawn point. Nodes named `col_*` become box
+  colliders (rejected unless their transform keeps them axis-aligned),
+  a node named `spawn` places the player, and every other mesh node is
+  drawn, shaded by face orientation.
+- `assets/levels/arena.glb`: the arena, the same room and pillars as the
+  old placeholder, now authored as data.
+- Unit and property tests for the loader: colliders contain every placed
+  vertex, axis-aligned transforms keep the volume, turns off the axes are
+  rejected, and malformed levels fail with an error naming the node.
 
 ### Changed
 - Mouse look now turns the player in `sim` rather than the camera in
   `game`; the look sensitivity constant moved with it.
 - `sim` now depends on `glam` for vector math.
+- `game` now depends on `gltf` (without its image and base64 features),
+  and loads the level from the embedded arena instead of `grey_box`.
+
+### Removed
+- `game::grey_box`: replaced by `game::level` and `arena.glb`.

@@ -489,3 +489,85 @@ geometry can replace it without touching the movement code.
 | Date | Update | Author |
 |------|--------|--------|
 | 2026-10-25 | Initial entry | deltaog-117 |
+
+---
+
+### Feature: Level Geometry and Collision
+
+**Date:** 2026-10-25
+**Status:** Confirmed
+
+#### Context / Background
+
+First v0.2 item. The v0.1 room was hard-coded constants; levels need to
+be data, with one file driving both what is drawn and what is solid.
+
+#### Options Considered
+
+**Option A: glTF renders the level; `col_*` box proxies collide**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • `World` and the axis sweep stay as they are <br> • Existing movement property tests still apply <br> • Smallest change |
+| **Disadvantages** | • Axis-aligned geometry only, no ramps <br> • Two sets of geometry to keep in step |
+| **Implementation Difficulty** | Easy |
+
+**Option B: Triangle-soup collision with a grid or BVH**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Any mesh is walkable <br> • No proxies |
+| **Disadvantages** | • Movement needs a slide-plane rewrite <br> • Most edge cases and tests |
+| **Implementation Difficulty** | Hard |
+
+**Option C: Quake-style convex brushes**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Robust ramps and angled walls |
+| **Disadvantages** | • New plane-clip sweep and movement rewrite <br> • Hull authoring in glTF |
+| **Implementation Difficulty** | Medium |
+
+#### Decision & Rationale
+
+**Chosen: Option A.** It ships a real glTF level without touching the
+movement code that already passes its property tests, and the loader,
+render path and asset pipeline are needed under any option. Option C can
+extend it later: `col_*` nodes could carry brushes behind the same
+`World` interface.
+
+**Trade-offs accepted:** no ramps or angled walls until brush or
+triangle collision exists.
+
+#### Implementation Notes
+
+- `game::level` stays inside `game`, the glue between `sim` and `render`;
+  neither of those learns about glTF. The level is one `.glb` embedded
+  with `include_bytes!`, so there is no working-directory dependence and
+  no external buffer or image files (the `gltf` crate is built without
+  its `import` feature for the same reason).
+- Contract: `col_*` mesh nodes are colliders and are not drawn, a `spawn`
+  node is the player start, any other mesh node is drawn. A level with no
+  spawn, two spawns or no colliders is rejected.
+- A collider is the bounds of its placed vertices. Bounds only equal the
+  shape when the transform keeps it on the axes, so any turn other than a
+  quarter turn is an error rather than a silently bigger box.
+- Drawn meshes take the material's base color factor and are shaded by
+  the face normal with the same table as `Mesh::cuboid`, since there are
+  no lights yet. Textures, vertex colors and non-triangle modes are not
+  read.
+- `arena.glb` was generated from the old placeholder constants by a
+  throwaway script, so the room, pillars and spawn match the old one and
+  the tests assert the same counts (6 meshes, 10 solids). The script is
+  not in the repo; edit levels in a glTF tool from here on.
+- `game::grey_box` is deleted.
+- Not done: a benchmark (the roadmap schedules benchmarks with the
+  collision regression gate), logging (no logging infrastructure yet),
+  and a run of the game to look at the arena; `scripts/check` does not
+  open a window.
+
+#### Review / Update Log
+
+| Date | Update | Author |
+|------|--------|--------|
+| 2026-10-25 | Initial entry | deltaog-117 |

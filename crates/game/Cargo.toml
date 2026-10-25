@@ -11,6 +11,10 @@ sim = { path = "../sim" }
 render = { path = "../render" }
 winit = "0.30.13"
 glam = "0.34.1"
+gltf = { version = "1.4.1", default-features = false, features = ["names", "utils"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+proptest = "1.12.0"

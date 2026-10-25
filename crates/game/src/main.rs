@@ -2,7 +2,7 @@
 
 mod device_input;
 mod game_loop;
-mod grey_box;
+mod level;
 mod window;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

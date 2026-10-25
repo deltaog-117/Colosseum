@@ -34,6 +34,9 @@ Author: deltaog-117
 - ✅ Player movement and collision: Quake-style acceleration, friction,
   air control and jumping in `sim`, swept box collision against the
   grey-box room, and tick interpolation of the view
+- ✅ Level geometry and collision: `game::level` loads a glTF binary into
+  render meshes, box colliders (`col_*` nodes) and a spawn point; the
+  shipped arena replaces the hard-coded room
 
 ---
 
@@ -64,8 +67,9 @@ Author: deltaog-117
 
 **v0.2 to v0.4: the rest of a complete single-player game.**
 
-- **Level geometry and collision** – Real level meshes loaded from glTF
-  with collision against them, replacing the single box room.
+- ✅ **Level geometry and collision** – Real level meshes loaded from glTF
+  with box-proxy collision (`col_*` nodes), replacing the single box
+  room. Ramps and angled walls wait for brush or triangle collision.
 - **Projectile weapon** – Projectiles with speed, lifetime, cooldown,
   ammo and damage; a rocket-style first weapon.
 - **Hit detection and damage** – Projectile-versus-capsule tests with a
@@ -120,10 +124,10 @@ Author: deltaog-117
 
 ## 🎯 Next Actions (Immediate)
 
-v0.1 is complete. Pick the first v0.2 item:
+The first v0.2 item is done. Pick the next one:
 
-1. **Level geometry and collision** – glTF level meshes with collision
-   against them; the swept-box `World` in `sim::collision` is where the
-   triangle collision slots in.
-2. **Projectile weapon** – projectiles with speed, lifetime, cooldown,
+1. **Projectile weapon** – projectiles with speed, lifetime, cooldown,
    ammo and damage; independent of the level work.
+2. **Hit detection and damage** – needs the projectile weapon first.
+3. **PS1 shader pass** – vertex snapping, affine texturing, dithering and
+   fog; the loader already supplies per-vertex color to build on.

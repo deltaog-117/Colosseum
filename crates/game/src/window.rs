@@ -7,7 +7,6 @@ use render::Renderer;
 use render::camera::{Camera, Projection};
 use render::resolution::RenderResolution;
 
-use sim::collision::World;
 use sim::input::{Axis, Command, Event, InputState};
 use sim::movement::{Player, Pose};
 use sim::tick::TickRate;
@@ -19,7 +18,7 @@ use winit::window::{CursorGrabMode, Window, WindowId};
 
 use crate::device_input;
 use crate::game_loop::GameLoop;
-use crate::grey_box;
+use crate::level::{self, Level};
 
 const TITLE: &str = "fps-3d-game";
 
@@ -36,7 +35,7 @@ struct App {
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     camera: Camera,
-    world: World,
+    level: Level,
     player: Player,
     /// The player's pose one tick ago, the start of the interpolation.
     previous: Pose,
@@ -57,15 +56,15 @@ impl App {
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let rate = TickRate::DEFAULT;
         let projection = Projection::try_new(90f32.to_radians(), 0.05, 200.0)?;
-        let world = grey_box::world();
-        let player = Player::try_spawn(grey_box::SPAWN, &world, rate)?;
+        let level = level::arena()?;
+        let player = Player::try_spawn(level.spawn(), level.world(), rate)?;
         let pose = player.pose().ok_or("spawn pose is not finite")?;
         let camera = Camera::new(pose.eye(), projection).ok_or("spawn point is not finite")?;
         Ok(Self {
             window: None,
             renderer: None,
             camera,
-            world,
+            level,
             player,
             previous: pose,
             game_loop: GameLoop::new(rate, Instant::now()),
@@ -131,7 +130,7 @@ impl App {
             if let Some(pose) = self.player.pose() {
                 self.previous = pose;
             }
-            self.player.step(&self.command, &self.world);
+            self.player.step(&self.command, self.level.world());
         }
 
         // Drawn between the last two ticks, so motion stays smooth when the
@@ -180,8 +179,8 @@ impl ApplicationHandler for App {
             RenderResolution::DEFAULT,
         ) {
             Ok(mut renderer) => {
-                for mesh in grey_box::meshes() {
-                    renderer.add_mesh(&mesh);
+                for mesh in self.level.meshes() {
+                    renderer.add_mesh(mesh);
                 }
                 self.renderer = Some(renderer);
             }
