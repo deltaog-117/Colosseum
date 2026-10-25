@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = ["crates/sim", "crates/render", "crates/game"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["deltaog-117"]
+license = "MIT"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "warn"
