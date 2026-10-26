@@ -21,6 +21,7 @@ Author: deltaog-117
 | 2026-10-25 | Minimal renderer | Direct `wgpu`, scene into a low-res target, nearest-neighbor blit | ✅ Confirmed |
 | 2026-10-25 | Player movement and collision | Quake-style movement, per-axis swept AABB collision in `sim` | ✅ Confirmed |
 | 2026-10-25 | Hit detection and damage | Splash damage and knockback on box bodies, `sim::combat` | ✅ Confirmed |
+| 2026-10-26 | Performance benchmarks | `criterion` in `sim`, manual `scripts/bench` gate at 5% | ✅ Confirmed |
 
 ---
 
@@ -970,3 +971,74 @@ roadmap item for when textures arrive.
 | Date | Update | Author |
 |------|--------|--------|
 | 2026-10-25 | Initial entry | deltaog-117 |
+
+---
+
+### Feature: Performance Benchmarks
+
+**Date:** 2026-10-26
+**Status:** Confirmed
+
+#### Context / Background
+
+Seventh v0.2 item, taken before bots so there is a baseline to compare their
+load against. The engineering rules ask for a benchmark on each hot path and
+a failure above a 5% regression. `crates/sim/benches/` was empty.
+
+#### Options Considered
+
+**Option A: `criterion` with a saved baseline, run by hand**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Real timings with statistics <br> • Baseline comparison and a noise threshold built in |
+| **Disadvantages** | • Manual, because timings are noisy <br> • Baseline is machine-specific |
+| **Implementation Difficulty** | Small |
+
+**Option B: `divan` plus a hand-written gate script**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Lighter benchmark code |
+| **Disadvantages** | • No baseline comparison, so the gate is custom code <br> • Not in the local cargo cache |
+| **Implementation Difficulty** | Medium |
+
+**Option C: Operation-count tests inside `scripts/check`**
+
+| Aspect | Assessment |
+|--------|------------|
+| **Advantages** | • Runs on every edit, no noise |
+| **Disadvantages** | • Counts work, not time <br> • Needs counters inside the collision code |
+| **Implementation Difficulty** | Medium |
+
+#### Decision
+
+**Chosen: Option A.** It matches the Tier 2 rule (benchmarks run when a hot
+path changes) and needs no custom comparison code.
+
+**Trade-offs accepted:** the gate is not automatic; a slowdown is caught only
+when someone runs `scripts/bench compare`.
+
+#### Implementation Notes
+
+- `crates/sim/benches/tick.rs` holds four benchmarks on a 41-solid arena:
+  `player_step/hop`, `player_step/against_wall`, `world_sweep/three_axes` and
+  `launcher_step/in_flight`.
+- `scripts/bench save` records the `main` baseline; `scripts/bench compare`
+  re-runs against it with a 5% noise threshold and exits 1 if criterion
+  reports "Performance has regressed".
+- First numbers on this machine (120 Hz tick budget is 8.3 ms): hop 71 ns,
+  against wall 96 ns, three-axis sweep 258 ns, launcher step 89 ns. The tick
+  is nowhere near its budget, so bots have plenty of room.
+- `criterion` is a dev-dependency of `sim` only, without its plotting and
+  rayon features. Nothing changes in the shipped game.
+- Checked: save then compare back-to-back reported no regression (changes
+  within about 2%); `scripts/check` passes. A real regression was not
+  induced, so the failing path of the script is untested.
+- Not done: no render benchmark; no CI wiring; the baseline is not committed.
+
+#### Review / Update Log
+
+| Date | Update | Author |
+|------|--------|--------|
+| 2026-10-26 | Initial entry | deltaog-117 |

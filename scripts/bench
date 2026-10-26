@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+# Tier 2 benchmark gate. Timings are machine-specific and noisy, so this is
+# run by hand when a hot path changes, not from scripts/check.
+#   scripts/bench save      record the baseline (run on the unchanged code)
+#   scripts/bench compare   fail if any benchmark is more than 5% slower
+set -eu
+name=main
+case "${1:-}" in
+save)
+    cargo bench -p sim --bench tick -- --save-baseline "$name"
+    ;;
+compare)
+    out=$(cargo bench -p sim --bench tick -- --baseline "$name" --noise-threshold 0.05)
+    printf '%s\n' "$out"
+    if printf '%s\n' "$out" | grep -q "Performance has regressed"; then
+        echo "bench: regression above 5%" >&2
+        exit 1
+    fi
+    echo "bench: no regression above 5%"
+    ;;
+*)
+    echo "usage: scripts/bench save|compare" >&2
+    exit 2
+    ;;
+esac

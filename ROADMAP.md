@@ -49,6 +49,8 @@ Author: deltaog-117
 - ✅ PS1 shader pass: vertex snapping, distance fog and ordered dithering in
   WGSL, tuned by validated `PsxSettings` (`render::psx`); affine texturing
   waits for texture coordinates
+- ✅ Performance benchmarks: `criterion` benches for player step, sweep and
+  rocket flight in `sim`; `scripts/bench` gates regressions above 5%
 
 ---
 
@@ -95,7 +97,7 @@ Author: deltaog-117
 - ✅ **Game rules** – Spawns, respawns, scoring, pickups and a match timer.
 - ✅ **HUD** – Health, ammo, crosshair and scoreboard via a font atlas and
   quad batching.
-- **Performance benchmarks** – Benchmarks for the tick loop and
+- ✅ **Performance benchmarks** – Benchmarks for the tick loop and
   collision with a 5% regression gate.
 
 ---
@@ -137,13 +139,11 @@ Author: deltaog-117
 
 ## 🎯 Next Actions (Immediate)
 
-The first six v0.2 items are done. Pick the next one:
+Every v0.2 item except bots is done. Pick the next one:
 
-1. **Performance benchmarks** – the tick loop and collision, with a 5%
-   regression gate; a baseline is worth having before bots add load.
-2. **Bots** – navigation, aiming and basic behavior; they are the first
+1. **Bots** – navigation, aiming and basic behavior; they are the first
    other bodies to take rockets (`Launcher::step_against` is ready) and to
    earn kills (`Round::record_kill` is ready). The scoreboard gets its
    extra rows here.
-3. **Affine texturing** – add texture coordinates to `Vertex` and the
+2. **Affine texturing** – add texture coordinates to `Vertex` and the
    glTF loader once real textures arrive.

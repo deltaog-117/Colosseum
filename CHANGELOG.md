@@ -143,6 +143,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Renderer::set_psx` to change the look at runtime.
 - Unit and property tests for the above: bad fog ranges, colors and dither
   strengths are rejected, and packed settings are always finite.
+- `sim` benchmarks (`criterion`): player step, collision sweep and rocket
+  flight on a 41-solid arena.
+- `scripts/bench`: `save` records a baseline, `compare` fails on a
+  regression above 5%. Run by hand when a hot path changes.
 
 ### Changed
 - Mouse look now turns the player in `sim` rather than the camera in
