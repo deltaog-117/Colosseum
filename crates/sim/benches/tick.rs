@@ -1,11 +1,12 @@
 //! Hot-path benchmarks for the 120 Hz tick: player movement, collision
-//! sweeps and rocket flight. Run through `scripts/bench`, which gates
+//! sweeps, rocket flight and a bot's decision. Run through `scripts/bench`, which gates
 //! regressions above 5% against a saved baseline.
 
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec3;
+use sim::bot::{Brain, Target};
 use sim::collision::{Aabb, Axis3, World};
 use sim::input::{Button, Command, Event, InputState};
 use sim::movement::{Player, Pose};
@@ -115,5 +116,25 @@ fn launcher_step(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, player_step, world_sweep, launcher_step);
+fn brain_decide(c: &mut Criterion) {
+    let world = arena();
+    let body = spawn(Vec3::new(-18.0, 0.0, -18.0), &world);
+    let mut brain = Brain::new(rate(), 1);
+    // Across the pillar grid, so the line-of-sight cast scans a realistic list.
+    let target = match Target::try_new(Vec3::new(15.0, 1.6, 15.0), Vec3::new(2.0, 0.0, 0.0)) {
+        Some(target) => target,
+        None => panic!("benchmark target is finite"),
+    };
+    c.bench_function("brain_decide/across_the_arena", |b| {
+        b.iter(|| brain.decide(black_box(&body), black_box(Some(&target)), &world));
+    });
+}
+
+criterion_group!(
+    benches,
+    player_step,
+    world_sweep,
+    launcher_step,
+    brain_decide
+);
 criterion_main!(benches);

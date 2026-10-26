@@ -22,6 +22,7 @@ Author: deltaog-117
 | 2026-10-25 | Player movement and collision | Quake-style movement, per-axis swept AABB collision in `sim` | ✅ Confirmed |
 | 2026-10-25 | Hit detection and damage | Splash damage and knockback on box bodies, `sim::combat` | ✅ Confirmed |
 | 2026-10-26 | Performance benchmarks | `criterion` in `sim`, manual `scripts/bench` gate at 5% | ✅ Confirmed |
+| 2026-10-26 | Bots | Generated navigation grid, built in slices; slice 1 is the reflex bot | 🟡 Slice 1 done |
 
 ---
 
@@ -1042,3 +1043,74 @@ when someone runs `scripts/bench compare`.
 | Date | Update | Author |
 |------|--------|--------|
 | 2026-10-26 | Initial entry | deltaog-117 |
+
+---
+
+### Feature: Bots (slice 1 of 2)
+
+**Date:** 2026-10-26
+**Status:** Slice 1 confirmed; slice 2 pending
+
+#### Context / Background
+
+The last open v0.2 item. Rockets (`Launcher::step_against`) and kills
+(`Round::record_kill`) were already written for other bodies, but
+`window.rs` held exactly one player, launcher and health, and a `Command`
+could only be built from devices.
+
+#### Options Considered
+
+**Option A: Reflex bot, no navigation.** Simplest; gets stuck in concave
+shapes and ignores pickups.
+
+**Option B: Hand-placed waypoints in the glTF.** Designed routes; needs
+authoring per level and a loader change.
+
+**Option C: Generated navigation grid.** No authoring and works on any
+level; the most code, 2D only.
+
+#### Decision
+
+**Chosen: Option C, in two slices.** Slice 1 is the plumbing every option
+needs plus the reflex bot (A). Slice 2 adds the grid behind the same
+`Brain` interface.
+
+**Trade-offs accepted:** until slice 2 bots can get stuck behind walls, and
+they pick up only what they run into.
+
+#### Implementation Notes
+
+- A bot is a `Player` driven by a `Command`, so it follows the exact
+  movement and collision rules. `Command::from_intent` is the only new way
+  in, and it applies the same look clamp as a device.
+- The brain inverts the player's look rule to turn at a finite rate
+  (`TURN_RATE`, 6 rad/s). An instant turn would make every shot land.
+- Aim leads the target by the rocket's flight time. Fire needs a clear
+  `World::cast`, a view within `FIRE_CONE` and a distance of at least
+  `MIN_FIRE_RANGE`, which sits above the blast reach so a bot does not
+  rocket itself.
+- Strafe timing uses a seeded xorshift, so a bot's choices replay exactly
+  and tests stay deterministic. `rand` was not added.
+- The jump probe fires only when a wall stops most of the next step along
+  both horizontal axes, because a bot pressed against a flat wall slides
+  along it. In practice that means corners and dead ends.
+- Blast handling moved into `combat::strike`, used by the player and the
+  bots alike. Rockets now burst on bodies: the player's against bots, each
+  bot's against everyone but itself. Free-for-all; a kill is credited to the
+  shooter unless they killed themselves.
+- Pickups go to the player first, then the bots in order. A pickup still
+  waiting is not offered on, since each `Pickup::step` also runs its clock.
+- `brain_decide`: about 0.9 us per decision on a 41-solid arena, against an
+  8.3 ms tick. The existing hot paths did not change, so the 5% gate was
+  not re-run; `scripts/bench save` will pick up the new benchmark.
+- Found while testing: a fixture put the wall 20 m from the bot, so a
+  blast was out of reach and an unbounded kill loop hung the suite. The
+  helper is now bounded.
+- Not done: no navigation, no pickup seeking, no skill levels, no bot
+  names beyond "BOT n", and the bot count is a constant.
+
+#### Review / Update Log
+
+| Date | Update | Author |
+|------|--------|--------|
+| 2026-10-26 | Initial entry, slice 1 | deltaog-117 |

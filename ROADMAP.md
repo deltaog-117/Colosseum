@@ -94,6 +94,10 @@ Author: deltaog-117
 - **Bots** – Navigation, aiming and basic behavior, so the game is
   testable alone. Skeletal animation waits until here, as it is the
   largest single renderer piece.
+  - ✅ Slice 1: reflex bots that aim, lead, strafe, shoot, take pickups
+    and score (`sim::bot`).
+  - Slice 2: generated navigation grid and A* pathing, so bots can reach
+    targets around walls and run for pickups.
 - ✅ **Game rules** – Spawns, respawns, scoring, pickups and a match timer.
 - ✅ **HUD** – Health, ammo, crosshair and scoreboard via a font atlas and
   quad batching.
@@ -139,11 +143,10 @@ Author: deltaog-117
 
 ## 🎯 Next Actions (Immediate)
 
-Every v0.2 item except bots is done. Pick the next one:
+Bots are half done. Pick the next one:
 
-1. **Bots** – navigation, aiming and basic behavior; they are the first
-   other bodies to take rockets (`Launcher::step_against` is ready) and to
-   earn kills (`Round::record_kill` is ready). The scoreboard gets its
-   extra rows here.
+1. **Bots, slice 2: navigation grid** – generate a walkable grid from the
+   box world (`World::sweep`), search it with A*, and let `Brain` follow
+   the path instead of walking straight. Fixes bots stuck behind walls.
 2. **Affine texturing** – add texture coordinates to `Vertex` and the
    glTF loader once real textures arrive.

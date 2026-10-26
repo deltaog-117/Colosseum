@@ -3,7 +3,9 @@
 
 mod blast;
 mod health;
+mod strike;
 pub mod tuning;
 
 pub use blast::{Impact, impact};
 pub use health::{Health, Outcome};
+pub use strike::strike;

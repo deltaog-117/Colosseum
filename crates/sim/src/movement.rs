@@ -7,3 +7,5 @@ pub mod tuning;
 
 pub use player::{Player, SpawnError};
 pub use pose::Pose;
+// Bots turn their view by the same shortest-way rule the pose blends with.
+pub(crate) use pose::wrap_angle;

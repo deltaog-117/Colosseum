@@ -147,8 +147,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flight on a 41-solid arena.
 - `scripts/bench`: `save` records a baseline, `compare` fails on a
   regression above 5%. Run by hand when a hot path changes.
+- `sim::bot`: a reflex `Brain` that turns a `Target` into the same
+  `Command` a keyboard makes (face it at a limited turn rate, lead a moving
+  target, hold a fighting distance, strafe, hop when boxed in, fire only
+  with a clear line and no closer than the blast reach), and a `Bot` that
+  owns a body, launcher, health and score.
+- `Command::from_intent`: builds a command from code, with the look
+  cleaned like a device look.
+- `sim::combat::strike`: one blast against one body, shared by the player
+  and the bots.
+- `game`: three bots in the arena. They fight the nearest living body,
+  take pickups they touch, respawn, reset each round and are drawn as red
+  boxes. Rockets now burst on bodies and kills are credited to the shooter.
+- Scoreboard rows for each bot.
+- `brain_decide` benchmark.
+- Unit and property tests for the above.
 
 ### Changed
+- Rockets fired by the player now burst on bots as well as on walls.
+- `HudView` carries the bots' score rows.
 - Mouse look now turns the player in `sim` rather than the camera in
   `game`; the look sensitivity constant moved with it.
 - `sim` now depends on `glam` for vector math.

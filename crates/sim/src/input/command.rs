@@ -1,3 +1,5 @@
+use super::LOOK_LIMIT;
+
 /// One movement axis, resolved to a direction.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Axis {
@@ -78,6 +80,34 @@ impl Command {
             fire,
             look,
         }
+    }
+
+    /// A command made by code instead of a device, such as a bot's. `look_x`
+    /// and `look_y` are in device counts, like [`Look`]; a non-finite one
+    /// counts as zero and the rest is clamped to `±LOOK_LIMIT`, so the
+    /// invariants of [`Look`] hold for every caller.
+    pub fn from_intent(
+        forward: Axis,
+        strafe: Axis,
+        jump: bool,
+        fire: bool,
+        look_x: f32,
+        look_y: f32,
+    ) -> Self {
+        let clean = |counts: f32| {
+            if counts.is_finite() {
+                counts.clamp(-LOOK_LIMIT, LOOK_LIMIT)
+            } else {
+                0.0
+            }
+        };
+        Self::new(
+            forward,
+            strafe,
+            jump,
+            fire,
+            Look::new(clean(look_x), clean(look_y)),
+        )
     }
 
     /// Movement along the view direction; positive is forward.

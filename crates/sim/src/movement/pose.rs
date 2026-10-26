@@ -63,7 +63,7 @@ impl Pose {
 }
 
 /// Maps any finite angle into `-π..=π`.
-pub(super) fn wrap_angle(angle: f32) -> f32 {
+pub(crate) fn wrap_angle(angle: f32) -> f32 {
     let wrapped = (angle + PI).rem_euclid(2.0 * PI) - PI;
     // `rem_euclid` of a tiny negative can round up to exactly the modulus.
     wrapped.clamp(-PI, PI)

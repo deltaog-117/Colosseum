@@ -10,7 +10,9 @@ use render::mesh::Mesh;
 use render::resolution::RenderResolution;
 
 use glam::Vec3;
-use sim::combat::{self, Health, Outcome};
+use sim::bot::{Bot, Target};
+use sim::collision::Aabb;
+use sim::combat::{Health, Outcome, strike};
 use sim::input::{Command, Event, InputState};
 use sim::movement::{Player, Pose};
 use sim::rules::{Pickup, PickupKind, Round, Transition};
@@ -24,10 +26,17 @@ use winit::window::{CursorGrabMode, Window, WindowId};
 
 use crate::device_input;
 use crate::game_loop::GameLoop;
-use crate::hud::{self, HudView};
+use crate::hud::{self, HudView, ScoreRow};
 use crate::level::{self, Level};
 
 const TITLE: &str = "fps-3d-game";
+
+/// Opponents in the arena. Placeholder until there is a menu to set it.
+const BOT_COUNT: usize = 3;
+/// Spreads the bots' seeds apart; the golden-ratio constant of Knuth's
+/// multiplicative hash, so neighbouring bots do not strafe in step.
+const BOT_SEED_STRIDE: u32 = 0x9E37_79B9;
+const BOT_COLOR: [f32; 3] = [0.85, 0.2, 0.2];
 
 /// Half the edge of the cube that stands in for a rocket, until there is art.
 const ROCKET_HALF_SIZE: f32 = 0.12;
@@ -54,6 +63,7 @@ struct App {
     health: Health,
     round: Round,
     pickups: Vec<Pickup>,
+    bots: Vec<Bot>,
     /// Where the player last fell, so the respawn can be far from it.
     death_at: Vec3,
     /// The player's pose one tick ago, the start of the interpolation.
@@ -86,6 +96,14 @@ fn pickup_meshes(pickups: &[Pickup]) -> Vec<Mesh> {
         .collect()
 }
 
+/// One box per living bot, until there is art.
+fn bot_meshes(bots: &[Bot]) -> Vec<Mesh> {
+    bots.iter()
+        .filter_map(|bot| bot.active_body(true))
+        .filter_map(|body| Mesh::cuboid(body.min(), body.max(), BOT_COLOR))
+        .collect()
+}
+
 /// One small cube per rocket, placed between its last two ticks. A rocket
 /// whose cube cannot be built is skipped rather than drawn wrong.
 fn rocket_meshes(launcher: &Launcher, alpha: f32) -> Vec<Mesh> {
@@ -114,6 +132,17 @@ impl App {
             .collect();
         let pose = player.pose().ok_or("spawn pose is not finite")?;
         let camera = Camera::new(pose.eye(), projection).ok_or("spawn point is not finite")?;
+        // The player holds the first spawn point, so the bots take the others in turn.
+        let spawns = level.spawns().points();
+        let bots = (0..BOT_COUNT)
+            .filter_map(|index| {
+                let home = spawns[(index + 1) % spawns.len()];
+                let seed = BOT_SEED_STRIDE.wrapping_mul(index as u32 + 1);
+                Bot::try_spawn(home, level.world(), rate, seed)
+                    .map_err(|err| eprintln!("could not place bot {}: {err}", index + 1))
+                    .ok()
+            })
+            .collect();
         Ok(Self {
             window: None,
             renderer: None,
@@ -124,6 +153,7 @@ impl App {
             health: Health::new(rate),
             round: Round::new(rate),
             pickups,
+            bots,
             death_at: first_spawn,
             previous: pose,
             game_loop: GameLoop::new(rate, Instant::now()),
@@ -136,24 +166,96 @@ impl App {
         })
     }
 
-    /// Applies this tick's blasts to the player. Every rocket is the
-    /// player's own until there are other shooters, so the shooter's share
-    /// of the damage applies. Nothing lands once the round is over, so the
-    /// final score cannot change after the bell.
+    /// Applies this tick's blasts to everyone. A shooter takes only a share
+    /// of the damage from their own rocket, and a kill goes to the shooter
+    /// unless they killed themselves. Nothing lands once the round is over,
+    /// so the final score cannot change after the bell.
     fn apply_blasts(&mut self) {
-        if !self.health.is_alive() || !self.round.is_playing() {
+        if !self.round.is_playing() {
             return;
         }
-        for blast in self.launcher.detonations() {
-            let Some(hit) = combat::impact(blast, self.level.world(), self.player.bounds()) else {
-                continue;
-            };
-            let hit = hit.to_shooter();
-            self.player.push(hit.impulse());
-            if self.health.damage(hit.damage()) == Outcome::Killed {
+        let world = self.level.world();
+
+        // Copied out so the launcher's list is not borrowed while bodies change.
+        let blasts = self.launcher.detonations().to_vec();
+        for blast in &blasts {
+            if strike(blast, world, &mut self.player, &mut self.health, true) == Outcome::Killed {
                 self.round.record_death();
                 self.death_at = self.player.position();
-                break;
+            }
+            for bot in &mut self.bots {
+                if bot.take_blast(blast, world, false) == Outcome::Killed {
+                    self.round.record_kill();
+                }
+            }
+        }
+
+        for shooter in 0..self.bots.len() {
+            let blasts = self.bots[shooter].launcher().detonations().to_vec();
+            for blast in &blasts {
+                if strike(blast, world, &mut self.player, &mut self.health, false)
+                    == Outcome::Killed
+                {
+                    self.round.record_death();
+                    self.death_at = self.player.position();
+                    self.bots[shooter].record_kill();
+                }
+                for victim in 0..self.bots.len() {
+                    let outcome = self.bots[victim].take_blast(blast, world, victim == shooter);
+                    if outcome == Outcome::Killed && victim != shooter {
+                        self.bots[shooter].record_kill();
+                    }
+                }
+            }
+        }
+    }
+
+    /// What the bots aim at: the player while they live.
+    fn player_target(&self) -> Option<Target> {
+        self.health
+            .is_alive()
+            .then(|| Target::try_new(self.player.bounds().center(), self.player.velocity()))
+            .flatten()
+    }
+
+    /// Moves and arms every bot for one tick. Each fights the nearest living
+    /// body but its own, and its rockets burst on every body but its own.
+    fn step_bots(&mut self) {
+        let playing = self.round.is_playing();
+        // Index 0 is the player, then the bots in order; the dead are `None`.
+        let bodies: Vec<Option<Aabb>> =
+            std::iter::once(self.health.is_alive().then(|| *self.player.bounds()))
+                .chain(self.bots.iter().map(|bot| bot.active_body(true)))
+                .collect();
+        let marks: Vec<Option<Target>> = std::iter::once(self.player_target())
+            .chain(self.bots.iter().map(Bot::as_target))
+            .collect();
+
+        for (index, bot) in self.bots.iter_mut().enumerate() {
+            let me = index + 1;
+            let target = Target::nearest(
+                bot.player().position(),
+                marks
+                    .iter()
+                    .enumerate()
+                    .filter(|(other, _)| *other != me)
+                    .filter_map(|(_, mark)| mark.as_ref()),
+            );
+            let enemies: Vec<Aabb> = bodies
+                .iter()
+                .enumerate()
+                .filter(|(other, _)| *other != me)
+                .filter_map(|(_, body)| *body)
+                .collect();
+            bot.step(self.level.world(), playing, target, &enemies);
+        }
+    }
+
+    /// Brings back the bots whose wait is over.
+    fn respawn_bots(&mut self) {
+        for bot in &mut self.bots {
+            if let Err(err) = bot.step_health(self.level.spawns(), self.level.world()) {
+                eprintln!("could not respawn a bot: {err}");
             }
         }
     }
@@ -181,20 +283,39 @@ impl App {
         self.health = Health::new(self.rate);
         self.death_at = self.level.spawns().first();
         self.respawn();
+        for bot in &mut self.bots {
+            if let Err(err) = bot.reset(self.level.world()) {
+                eprintln!("could not reset a bot: {err}");
+            }
+        }
         self.pickups.iter_mut().for_each(Pickup::reset);
     }
 
-    /// Hands pickups to the player for one tick. The dead and the finished
-    /// take nothing, but the pickups' waits still run.
+    /// Hands pickups out for one tick, to the player first and then to the
+    /// bots in order. The dead and the finished take nothing, but the
+    /// pickups' waits still run.
     fn collect_pickups(&mut self) {
-        let alive = self.health.is_alive() && self.round.is_playing();
-        let body = alive.then(|| *self.player.bounds());
+        let playing = self.round.is_playing();
+        let body = (self.health.is_alive() && playing).then(|| *self.player.bounds());
         for pickup in &mut self.pickups {
             let taken = pickup.step(body.as_ref(), |kind| {
                 kind.is_wanted(&self.health, &self.launcher)
             });
             if let Some(kind) = taken {
                 kind.give(&mut self.health, &mut self.launcher);
+                continue;
+            }
+            for bot in &mut self.bots {
+                // The wait counts down on every `step`, so a pickup still
+                // waiting is not offered on: that would run its clock fast.
+                if !pickup.is_ready() {
+                    break;
+                }
+                if let Some(kind) =
+                    pickup.step(bot.active_body(playing).as_ref(), |kind| bot.wants(kind))
+                {
+                    bot.receive(kind);
+                }
             }
         }
     }
@@ -260,7 +381,14 @@ impl App {
             if playing {
                 self.player.step(&self.command, self.level.world());
             }
-            self.launcher.step(self.level.world());
+            // Rockets burst on living bots as well as on walls.
+            let bot_bodies: Vec<Aabb> = self
+                .bots
+                .iter()
+                .filter_map(|bot| bot.active_body(true))
+                .collect();
+            self.launcher.step_against(self.level.world(), &bot_bodies);
+            self.step_bots();
             self.apply_blasts();
             self.collect_pickups();
             if playing
@@ -275,6 +403,7 @@ impl App {
             if self.health.step() {
                 self.respawn();
             }
+            self.respawn_bots();
         }
 
         // Drawn between the last two ticks, so motion stays smooth when the
@@ -285,6 +414,15 @@ impl App {
         }
 
         let score = self.round.score();
+        let rows: Vec<ScoreRow> = self
+            .bots
+            .iter()
+            .map(|bot| ScoreRow {
+                kills: bot.score().kills(),
+                deaths: bot.score().deaths(),
+                frags: bot.score().frags(),
+            })
+            .collect();
         hud::draw(
             &mut self.hud,
             &HudView {
@@ -296,11 +434,16 @@ impl App {
                 deaths: score.deaths(),
                 frags: score.frags(),
                 scoreboard: self.show_scoreboard,
+                bots: &rows,
             },
         );
 
         if let Some(renderer) = &mut self.renderer {
             let mut transient = rocket_meshes(&self.launcher, advance.alpha);
+            for bot in &self.bots {
+                transient.extend(rocket_meshes(bot.launcher(), advance.alpha));
+            }
+            transient.extend(bot_meshes(&self.bots));
             transient.extend(pickup_meshes(&self.pickups));
             renderer.set_transient_meshes(&transient);
             renderer.set_hud(&self.hud);
