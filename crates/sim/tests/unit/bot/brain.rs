@@ -5,6 +5,8 @@ use sim::collision::{Aabb, World};
 use sim::input::Axis;
 use sim::movement::Player;
 use sim::movement::tuning::{EYE_HEIGHT, LOOK_SENSITIVITY};
+use sim::nav::NavGrid;
+use sim::nav::tuning::CELL_SIZE;
 use sim::tick::TickRate;
 
 const RATE: TickRate = TickRate::DEFAULT;
@@ -178,4 +180,109 @@ fn the_nearest_target_wins_and_the_earliest_wins_a_tie() {
     let nearest = Target::nearest(Vec3::ZERO, &candidates);
     assert_eq!(nearest, Some(&candidates[1]));
     assert_eq!(Target::nearest(Vec3::ZERO, &[]), None);
+}
+
+/// A floor split by a wall across x, with a doorway at the far +X end.
+fn walled_world() -> World {
+    let mut solids = vec![aabb(
+        Vec3::new(-20.0, -1.0, -20.0),
+        Vec3::new(20.0, 0.0, 20.0),
+    )];
+    solids.push(aabb(Vec3::new(-20.0, 0.0, -0.5), Vec3::new(14.0, 6.0, 0.5)));
+    World::new(solids)
+}
+
+fn nav_for(world: &World) -> NavGrid {
+    match NavGrid::build(world, 0.0, CELL_SIZE) {
+        Ok(nav) => nav,
+        Err(err) => panic!("fixture grid builds: {err}"),
+    }
+}
+
+/// Runs the brain and the body for `seconds` and returns the body.
+fn run_routed(
+    world: &World,
+    nav: &NavGrid,
+    mut body: Player,
+    target: Option<&Target>,
+    errand: Option<Vec3>,
+    seconds: u32,
+) -> Player {
+    let mut brain = Brain::new(RATE, 1);
+    for _ in 0..seconds * RATE.hz() {
+        let command = brain.decide_routed(&body, target, errand, world, nav);
+        body.step(&command, world);
+    }
+    body
+}
+
+#[test]
+fn a_bot_walks_around_a_wall_to_a_target_it_cannot_see() {
+    let world = walled_world();
+    let nav = nav_for(&world);
+    let foe = match Target::try_new(Vec3::new(0.0, EYE_HEIGHT, 8.0), Vec3::ZERO) {
+        Some(target) => target,
+        None => panic!("fixture target is finite"),
+    };
+    let body = bot_at(Vec3::new(0.0, 0.0, -8.0), &world);
+    let eye = body.position() + Vec3::Y * EYE_HEIGHT;
+    assert!(
+        world.cast(eye, foe.center() - eye).is_some(),
+        "the wall should hide the target at the start"
+    );
+
+    let body = run_routed(&world, &nav, body, Some(&foe), None, 12);
+    let eye = body.position() + Vec3::Y * EYE_HEIGHT;
+    assert!(
+        world.cast(eye, foe.center() - eye).is_none(),
+        "the bot never found its way to a view of the target, ended at {}",
+        body.position()
+    );
+}
+
+#[test]
+fn a_bot_with_an_errand_and_no_target_walks_to_it() {
+    let world = walled_world();
+    let nav = nav_for(&world);
+    let errand = Vec3::new(-5.0, 0.0, 10.0);
+    let body = bot_at(Vec3::new(-5.0, 0.0, -10.0), &world);
+
+    let body = run_routed(&world, &nav, body, None, Some(errand), 15);
+    let flat = |v: Vec3| glam::Vec2::new(v.x, v.z);
+    assert!(
+        flat(body.position()).distance(flat(errand)) < 1.5,
+        "stopped at {}",
+        body.position()
+    );
+}
+
+#[test]
+fn a_bot_with_neither_target_nor_errand_stands_idle_when_routed() {
+    let world = walled_world();
+    let nav = nav_for(&world);
+    let mut brain = Brain::new(RATE, 1);
+    let command = brain.decide_routed(
+        &bot_at(Vec3::new(0.0, 0.0, -3.0), &world),
+        None,
+        None,
+        &world,
+        &nav,
+    );
+    assert_eq!(command, sim::input::Command::default());
+}
+
+#[test]
+fn a_bot_with_the_target_in_sight_fights_it_instead_of_following_a_route() {
+    let world = open();
+    let nav = nav_for(&world);
+    let mut brain = Brain::new(RATE, 1);
+    let command = brain.decide_routed(
+        &bot_at(Vec3::ZERO, &world),
+        Some(&target_ahead(PREFERRED_RANGE + 6.0)),
+        Some(Vec3::new(30.0, 0.0, 30.0)),
+        &world,
+        &nav,
+    );
+    assert_eq!(command.forward(), Axis::Positive);
+    assert!(command.fire() || command.look().dx() != 0.0 || command.look().dy() != 0.0);
 }

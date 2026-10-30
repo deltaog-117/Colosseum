@@ -162,8 +162,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scoreboard rows for each bot.
 - `brain_decide` benchmark.
 - Unit and property tests for the above.
+- `sim::nav`: a `NavGrid` of the spots a player-sized body can stand on,
+  built once from the box world, and deterministic A* paths across it
+  (`NavGrid::path`) with no corner cutting and straight runs merged into
+  single legs. Start and goal points inside a wall snap to the nearest open
+  cell.
+- `Brain::decide_routed`: a bot that cannot see its target now follows a
+  planned route to it, or to a pickup it wants, and fights once it has a
+  line of sight. The route is replanned twice a second.
+- `Bot::errand`: the nearest ready pickup the bot wants.
+- `nav_path` and `brain_decide_routed` benchmarks.
+- Unit and property tests for the grid (paths cross only walkable cells,
+  are deterministic and exist both ways or neither) and for routed bots.
 
 ### Changed
+- `Bot::step` takes the navigation grid and an optional errand. In `game`,
+  bots now run for pickups they want and walk around walls to their target
+  instead of pressing against them.
 - Rockets fired by the player now burst on bots as well as on walls.
 - `HudView` carries the bots' score rows.
 - Mouse look now turns the player in `sim` rather than the camera in

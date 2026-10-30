@@ -5,6 +5,7 @@
 
 mod agent;
 mod brain;
+mod guide;
 pub mod tuning;
 
 pub use agent::Bot;

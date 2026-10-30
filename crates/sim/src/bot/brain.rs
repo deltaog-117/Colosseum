@@ -1,13 +1,15 @@
 use glam::{Vec2, Vec3};
 
+use super::guide::Guide;
 use super::tuning::{
     BACK_OFF_RANGE, FIRE_CONE, MIN_FIRE_RANGE, PREFERRED_RANGE, STRAFE_MAX_SECONDS,
-    STRAFE_MIN_SECONDS, TURN_RATE, WALL_PROBE,
+    STRAFE_MIN_SECONDS, TURN_FIRST, TURN_RATE, WALL_PROBE,
 };
 use crate::collision::{Axis3, World};
 use crate::input::{Axis, Command};
 use crate::movement::tuning::{LOOK_SENSITIVITY, PITCH_LIMIT};
-use crate::movement::{Player, wrap_angle};
+use crate::movement::{Player, Pose, wrap_angle};
+use crate::nav::NavGrid;
 use crate::tick::TickRate;
 use crate::weapon::tuning::PROJECTILE_SPEED;
 
@@ -54,9 +56,9 @@ impl Target {
 /// The reflex that drives a bot: face the target, keep a fighting
 /// distance, strafe, hop over what blocks the way and shoot when lined up.
 ///
-/// It knows nothing of the level beyond what a wall probe and a line of
-/// sight tell it, so it can be stopped by a dead-end; navigation replaces
-/// the walking later without touching the aiming.
+/// With a [`NavGrid`] it also plans a route to what it cannot see; without
+/// one it knows nothing of the level beyond a wall probe and a line of
+/// sight, so a dead-end can stop it.
 #[derive(Debug, Clone)]
 pub struct Brain {
     /// Radians the view may turn in one tick.
@@ -66,6 +68,7 @@ pub struct Brain {
     strafe_left: u32,
     strafe_min_ticks: u32,
     strafe_span_ticks: u32,
+    guide: Guide,
     /// State of a xorshift generator; never zero. Seeded, so a bot's
     /// choices replay exactly.
     rng: u32,
@@ -86,18 +89,76 @@ impl Brain {
             strafe_span_ticks: ticks(STRAFE_MAX_SECONDS)
                 .saturating_sub(strafe_min_ticks)
                 .max(1),
+            guide: Guide::new(rate),
             rng: seed.max(1),
         };
         brain.pick_strafe();
         brain
     }
 
-    /// What `body` does this tick to fight `target`. With no target, or a
-    /// body whose state is not finite, the bot stands idle.
+    /// What `body` does this tick to fight `target`, using only a wall
+    /// probe and a line of sight. With no target, or a body whose state is
+    /// not finite, the bot stands idle.
     pub fn decide(&mut self, body: &Player, target: Option<&Target>, world: &World) -> Command {
-        let (Some(target), Some(pose)) = (target, body.pose()) else {
+        match (target, body.pose()) {
+            (Some(target), Some(pose)) => self.fight(body, &pose, target, world),
+            _ => Command::default(),
+        }
+    }
+
+    /// Like [`decide`](Self::decide), but a bot that cannot see its target
+    /// walks a route over `nav` instead. It heads for `errand` (a pickup, say)
+    /// if there is one, else for the target, and fights once the target is in
+    /// sight. With nothing to go for, or no route, it falls back to
+    /// [`decide`](Self::decide).
+    pub fn decide_routed(
+        &mut self,
+        body: &Player,
+        target: Option<&Target>,
+        errand: Option<Vec3>,
+        world: &World,
+        nav: &NavGrid,
+    ) -> Command {
+        let Some(pose) = body.pose() else {
             return Command::default();
         };
+        let eye = pose.eye();
+        let seen = target.filter(|mark| world.cast(eye, mark.center - eye).is_none());
+        if let Some(mark) = seen {
+            return self.fight(body, &pose, mark, world);
+        }
+        let goal = errand.or(target.map(|mark| mark.center));
+        let waypoint = goal.and_then(|goal| self.guide.waypoint(body.position(), goal, nav));
+        match waypoint {
+            Some(point) => self.walk_to(body, &pose, point, world),
+            None => self.decide(body, target, world),
+        }
+    }
+
+    /// Runs at `point` along the floor, turning first if it lies behind.
+    fn walk_to(&self, body: &Player, pose: &Pose, point: Vec3, world: &World) -> Command {
+        let aim = point - body.position();
+        let yaw_error = wrap_angle((-aim.x).atan2(-aim.z) - pose.yaw());
+        let forward = if yaw_error.abs() < TURN_FIRST {
+            Axis::Positive
+        } else {
+            Axis::Zero
+        };
+        let jump = blocked_ahead(body, pose.yaw(), forward, Axis::Zero, world);
+        // Level the view as well, so the route is not walked looking at the sky.
+        let yaw_step = yaw_error.clamp(-self.max_turn, self.max_turn);
+        let pitch_step = (-pose.pitch()).clamp(-self.max_turn, self.max_turn);
+        Command::from_intent(
+            forward,
+            Axis::Zero,
+            jump,
+            false,
+            -yaw_step / LOOK_SENSITIVITY,
+            -pitch_step / LOOK_SENSITIVITY,
+        )
+    }
+
+    fn fight(&mut self, body: &Player, pose: &Pose, target: &Target, world: &World) -> Command {
         let eye = pose.eye();
         let distance = target.center.distance(eye);
 

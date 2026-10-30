@@ -51,6 +51,9 @@ Author: deltaog-117
   waits for texture coordinates
 - ✅ Performance benchmarks: `criterion` benches for player step, sweep and
   rocket flight in `sim`; `scripts/bench` gates regressions above 5%
+- ✅ Bot navigation: a walkable grid built from the box world, A* paths and a
+  route-following brain that heads for unseen targets and wanted pickups
+  (`sim::nav`, `sim::bot`)
 
 ---
 
@@ -91,13 +94,13 @@ Author: deltaog-117
   are deferred until bots make them worth it.
 - ✅ **PS1 shader pass** – Vertex snapping, dithering and fog in WGSL.
   Affine texturing is deferred until vertices carry texture coordinates.
-- **Bots** – Navigation, aiming and basic behavior, so the game is
+- ✅ **Bots** – Navigation, aiming and basic behavior, so the game is
   testable alone. Skeletal animation waits until here, as it is the
   largest single renderer piece.
   - ✅ Slice 1: reflex bots that aim, lead, strafe, shoot, take pickups
     and score (`sim::bot`).
-  - Slice 2: generated navigation grid and A* pathing, so bots can reach
-    targets around walls and run for pickups.
+  - ✅ Slice 2: generated navigation grid and A* pathing, so bots reach
+    targets around walls and run for pickups (`sim::nav`).
 - ✅ **Game rules** – Spawns, respawns, scoring, pickups and a match timer.
 - ✅ **HUD** – Health, ammo, crosshair and scoreboard via a font atlas and
   quad batching.
@@ -143,10 +146,10 @@ Author: deltaog-117
 
 ## 🎯 Next Actions (Immediate)
 
-Bots are half done. Pick the next one:
+The v0.2 to v0.4 list is done. Pick the next one:
 
-1. **Bots, slice 2: navigation grid** – generate a walkable grid from the
-   box world (`World::sweep`), search it with A*, and let `Brain` follow
-   the path instead of walking straight. Fixes bots stuck behind walls.
-2. **Affine texturing** – add texture coordinates to `Vertex` and the
-   glTF loader once real textures arrive.
+1. **Audio** – shots, hits and footsteps through `rodio`; independent of `sim`.
+2. **Particles and effects** – explosions and muzzle flashes on the existing
+   renderer.
+3. **Affine texturing** – add texture coordinates to `Vertex` and the glTF
+   loader once real textures arrive.

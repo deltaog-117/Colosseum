@@ -22,7 +22,7 @@ Author: deltaog-117
 | 2026-10-25 | Player movement and collision | Quake-style movement, per-axis swept AABB collision in `sim` | ✅ Confirmed |
 | 2026-10-25 | Hit detection and damage | Splash damage and knockback on box bodies, `sim::combat` | ✅ Confirmed |
 | 2026-10-26 | Performance benchmarks | `criterion` in `sim`, manual `scripts/bench` gate at 5% | ✅ Confirmed |
-| 2026-10-26 | Bots | Generated navigation grid, built in slices; slice 1 is the reflex bot | 🟡 Slice 1 done |
+| 2026-10-26 | Bots | Generated navigation grid, built in two slices: reflex bot, then grid and A* | ✅ Confirmed |
 
 ---
 
@@ -1114,3 +1114,81 @@ they pick up only what they run into.
 | Date | Update | Author |
 |------|--------|--------|
 | 2026-10-26 | Initial entry, slice 1 | deltaog-117 |
+
+---
+
+### Feature: Bots (slice 2 of 2): Navigation
+
+**Date:** 2026-10-30
+**Status:** Confirmed
+
+#### Context / Background
+
+Slice 1 left bots pressing against walls whenever the target was out of
+sight, and they only took pickups they happened to touch. Slice 2 gives
+the existing `Brain` a map.
+
+#### Options Considered
+
+**Option A: Uniform grid and A*.** Built once from `World`, no authoring.
+Memory grows with arena area; paths need tidying.
+
+**Option B: Hand-placed waypoints in the glTF.** Tiny search space; needs
+loader and art changes, and manual work per map.
+
+**Option C: Navmesh.** Best paths; needs triangle or brush collision that
+does not exist.
+
+**Option D: Grid plus a flow field per goal.** Cheap when many bots share a
+goal; less direct, and it recomputes per goal.
+
+#### Decision
+
+**Chosen: Option A.** It is the only one that needs neither a new loader
+nor a new collision model, and it is deterministic. D remains a later
+optimisation if many bots chase one pickup.
+
+**Trade-offs accepted:** one floor height only, so ramps and upper levels
+wait for richer collision; and a 0.5 m cell, so doorways narrower than the
+player's box are correctly shut but the grid is coarser than a navmesh.
+
+#### Implementation Notes
+
+- A cell is walkable if the player's box fits at its centre with a floor
+  just below, tested with `World::is_blocked` and a downward `sweep`. The
+  cell is no wider than the box (checked in `NavGrid::build`), so a box that
+  fits at two neighbouring centres fits between them and a path of
+  walkable cells is walkable.
+- Diagonal steps need both side cells open, so a path never clips a wall's
+  corner. Costs are whole numbers (10 and 14) and the heap breaks ties by
+  index, so the same question always gets the same path.
+- Straight runs are merged into single legs. The path leaves out the start
+  cell and ends at the goal point itself when that is walkable.
+- A start or goal inside a wall snaps to the nearest open cell within four
+  rings. Pickups sit in open floor, but bodies are often hugging walls.
+- `Guide` replans every 0.5 s rather than tracking staleness: it recovers
+  from knocks, stalls and a moving target with one rule, and caps the
+  searches at about two a second per bot. A waypoint counts as reached
+  within 0.8 m, because the bot turns at 6 rad/s while running at 8 m/s and
+  would circle a tighter one. A bot whose view is more than a radian off
+  turns on the spot first.
+- Routing only applies when the target is not in sight. Once seen, the bot
+  fights as in slice 1, so the aiming code is unchanged. Without a target a
+  bot runs for the nearest ready pickup it wants (`Bot::errand`).
+- `Brain::decide` is kept as the grid-less reflex; `decide_routed` adds
+  the route, which keeps the aiming tests as they were.
+- Found while testing: a property test counted a start inside a wall as a
+  walkable first leg. The path was right; the test now skips that leg.
+- `nav_path/corner_to_corner`: about 14 us on a 41-solid arena.
+  `brain_decide_routed`: about 0.8 us per tick, with the replan share
+  amortised. The earlier hot paths did not change, so the 5% gate was not
+  re-run; `scripts/bench save` will pick up the new benchmarks.
+- Not done: fighting-versus-fetching priorities (a hurt bot still fights
+  when it sees an enemy), path smoothing beyond merging straight runs,
+  and bots avoiding each other.
+
+#### Review / Update Log
+
+| Date | Update | Author |
+|------|--------|--------|
+| 2026-10-30 | Initial entry, slice 2 | deltaog-117 |

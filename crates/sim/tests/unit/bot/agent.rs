@@ -5,7 +5,9 @@ use sim::combat::tuning::MAX_HEALTH;
 use sim::combat::{Outcome, tuning::RESPAWN_SECONDS};
 use sim::movement::tuning::EYE_HEIGHT;
 use sim::movement::{Pose, SpawnError};
-use sim::rules::{PickupKind, SpawnPoints};
+use sim::nav::NavGrid;
+use sim::nav::tuning::CELL_SIZE;
+use sim::rules::{Pickup, PickupKind, SpawnPoints};
 use sim::tick::TickRate;
 use sim::weapon::tuning::START_AMMO;
 use sim::weapon::{Detonation, Launcher};
@@ -29,6 +31,13 @@ fn world() -> World {
         ),
         aabb(Vec3::new(-30.0, 0.0, 1.5), Vec3::new(30.0, 10.0, 2.5)),
     ])
+}
+
+fn nav(world: &World) -> NavGrid {
+    match NavGrid::build(world, 0.0, CELL_SIZE) {
+        Ok(nav) => nav,
+        Err(err) => panic!("fixture grid builds: {err}"),
+    }
 }
 
 fn spawn(world: &World) -> Bot {
@@ -102,9 +111,10 @@ fn a_new_bot_is_whole() {
 fn a_bot_with_a_target_in_view_shoots_it() {
     let world = world();
     let mut bot = spawn(&world);
+    let nav = nav(&world);
     let target = mark(-30.0);
     for _ in 0..600 {
-        bot.step(&world, true, Some(&target), &[]);
+        bot.step(&world, &nav, true, Some(&target), None, &[]);
     }
     assert!(bot.launcher().ammo() < START_AMMO, "the bot never fired");
 }
@@ -113,10 +123,11 @@ fn a_bot_with_a_target_in_view_shoots_it() {
 fn nothing_moves_while_the_round_is_not_playing() {
     let world = world();
     let mut bot = spawn(&world);
+    let nav = nav(&world);
     let before = bot.player().position();
     let target = mark(-30.0);
     for _ in 0..600 {
-        bot.step(&world, false, Some(&target), &[]);
+        bot.step(&world, &nav, false, Some(&target), None, &[]);
     }
     assert_eq!(bot.player().position(), before);
     assert_eq!(bot.launcher().ammo(), START_AMMO);
@@ -191,4 +202,36 @@ fn pickups_are_wanted_only_when_they_would_change_something() {
     assert!(bot.wants(PickupKind::Health));
     bot.receive(PickupKind::Health);
     assert!(bot.health().points() > 0);
+}
+
+#[test]
+fn the_errand_is_the_nearest_ready_pickup_the_bot_wants() {
+    let world = world();
+    let mut bot = spawn(&world);
+    let feet = |x: f32, z: f32| Vec3::new(x, 0.0, z);
+    let pickups: Vec<Pickup> = [
+        (PickupKind::Ammo, feet(0.0, 20.0)),
+        (PickupKind::Health, feet(1.0, -21.0)),
+        (PickupKind::Ammo, feet(0.0, -27.0)),
+    ]
+    .into_iter()
+    .filter_map(|(kind, at)| Pickup::try_new(kind, at, RATE))
+    .collect();
+
+    // A fresh bot is not full of rockets and wants ammo, not health; the
+    // ammo at z = 20 is nearer than the one at z = -27.
+    assert_eq!(bot.errand(&pickups).map(|at| at.z), Some(20.0));
+
+    // After firing it closes in on the target near z = -21. The health
+    // pickup there is not wanted, so the errand is the ammo beside it, not
+    // the ammo across the room.
+    let nav = nav(&world);
+    let target = mark(-30.0);
+    for _ in 0..600 {
+        bot.step(&world, &nav, true, Some(&target), None, &[]);
+    }
+    let Some(errand) = bot.errand(&pickups) else {
+        panic!("a bot short of ammo should want some");
+    };
+    assert!((errand.z + 27.0).abs() < 1.0, "errand went to {errand}");
 }

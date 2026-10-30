@@ -4,7 +4,8 @@ use super::brain::{Brain, Target};
 use crate::collision::{Aabb, World};
 use crate::combat::{self, Health, Outcome};
 use crate::movement::{Player, SpawnError};
-use crate::rules::{PickupKind, Score, SpawnPoints};
+use crate::nav::NavGrid;
+use crate::rules::{Pickup, PickupKind, Score, SpawnPoints};
 use crate::tick::TickRate;
 use crate::weapon::{Detonation, Launcher};
 
@@ -54,18 +55,24 @@ impl Bot {
     }
 
     /// Advances the bot by one tick. A living bot in a round in `playing`
-    /// fights `target`, if any; the rest only keep their rockets flying.
-    /// Rockets also burst on the bodies in `enemies`, which must leave the
-    /// bot's own out.
+    /// fights `target`, if any, finding its way over `nav` when it cannot
+    /// see it and heading for `errand` first if there is one; the rest only
+    /// keep their rockets flying. Rockets also burst on the bodies in
+    /// `enemies`, which must leave the bot's own out.
     pub fn step(
         &mut self,
         world: &World,
+        nav: &NavGrid,
         playing: bool,
         target: Option<&Target>,
+        errand: Option<Vec3>,
         enemies: &[Aabb],
     ) {
         let acting = playing && self.health.is_alive();
-        let command = acting.then(|| self.brain.decide(&self.player, target, world));
+        let command = acting.then(|| {
+            self.brain
+                .decide_routed(&self.player, target, errand, world, nav)
+        });
         if let Some(command) = &command {
             self.player.step(command, world);
         }
@@ -130,6 +137,20 @@ impl Bot {
     /// True if taking a `kind` pickup would change anything.
     pub fn wants(&self, kind: PickupKind) -> bool {
         kind.is_wanted(&self.health, &self.launcher)
+    }
+
+    /// Where the nearest ready pickup the bot wants stands, if any: what it
+    /// should run for when it has nothing to shoot at.
+    pub fn errand(&self, pickups: &[Pickup]) -> Option<Vec3> {
+        let here = self.player.position();
+        pickups
+            .iter()
+            .filter(|pickup| pickup.is_ready() && self.wants(pickup.kind()))
+            .map(|pickup| pickup.bounds().center())
+            .min_by(|a, b| {
+                a.distance_squared(here)
+                    .total_cmp(&b.distance_squared(here))
+            })
     }
 
     /// Hands the bot what a `kind` pickup holds.

@@ -15,6 +15,7 @@ use sim::collision::Aabb;
 use sim::combat::{Health, Outcome, strike};
 use sim::input::{Command, Event, InputState};
 use sim::movement::{Player, Pose};
+use sim::nav::{NavGrid, tuning::CELL_SIZE};
 use sim::rules::{Pickup, PickupKind, Round, Transition};
 use sim::tick::TickRate;
 use sim::weapon::Launcher;
@@ -62,6 +63,7 @@ struct App {
     launcher: Launcher,
     health: Health,
     round: Round,
+    nav: NavGrid,
     pickups: Vec<Pickup>,
     bots: Vec<Bot>,
     /// Where the player last fell, so the respawn can be far from it.
@@ -124,6 +126,7 @@ impl App {
         let projection = Projection::try_new(90f32.to_radians(), 0.05, 200.0)?;
         let level = level::arena()?;
         let first_spawn = level.spawns().first();
+        let nav = NavGrid::build(level.world(), first_spawn.y, CELL_SIZE)?;
         let player = Player::try_spawn(first_spawn, level.world(), rate)?;
         let pickups = level
             .pickups()
@@ -154,6 +157,7 @@ impl App {
             round: Round::new(rate),
             pickups,
             bots,
+            nav,
             death_at: first_spawn,
             previous: pose,
             game_loop: GameLoop::new(rate, Instant::now()),
@@ -247,7 +251,15 @@ impl App {
                 .filter(|(other, _)| *other != me)
                 .filter_map(|(_, body)| *body)
                 .collect();
-            bot.step(self.level.world(), playing, target, &enemies);
+            let errand = bot.errand(&self.pickups);
+            bot.step(
+                self.level.world(),
+                &self.nav,
+                playing,
+                target,
+                errand,
+                &enemies,
+            );
         }
     }
 

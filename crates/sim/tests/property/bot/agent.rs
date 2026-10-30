@@ -3,6 +3,8 @@ use proptest::prelude::*;
 use sim::bot::{Bot, Target};
 use sim::collision::{Aabb, World};
 use sim::combat::tuning::MAX_HEALTH;
+use sim::nav::NavGrid;
+use sim::nav::tuning::CELL_SIZE;
 use sim::tick::TickRate;
 use sim::weapon::tuning::MAX_AMMO;
 
@@ -34,6 +36,9 @@ proptest! {
         playing in any::<bool>(),
     ) {
         let world = room();
+        let Ok(nav) = NavGrid::build(&world, 0.0, CELL_SIZE) else {
+            return Ok(());
+        };
         let Ok(mut bot) = Bot::try_spawn(Vec3::new(0.0, 0.0, 12.0), &world, RATE, seed) else {
             return Ok(());
         };
@@ -42,7 +47,7 @@ proptest! {
         };
 
         for _ in 0..900 {
-            bot.step(&world, playing, Some(&foe), &[]);
+            bot.step(&world, &nav, playing, Some(&foe), None, &[]);
             prop_assert!(bot.launcher().ammo() <= MAX_AMMO);
             prop_assert!(bot.health().points() <= MAX_HEALTH);
             prop_assert!(!world.is_blocked(bot.player().bounds()));

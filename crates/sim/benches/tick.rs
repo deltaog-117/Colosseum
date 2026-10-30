@@ -10,6 +10,8 @@ use sim::bot::{Brain, Target};
 use sim::collision::{Aabb, Axis3, World};
 use sim::input::{Button, Command, Event, InputState};
 use sim::movement::{Player, Pose};
+use sim::nav::NavGrid;
+use sim::nav::tuning::CELL_SIZE;
 use sim::tick::TickRate;
 use sim::weapon::Launcher;
 
@@ -130,11 +132,53 @@ fn brain_decide(c: &mut Criterion) {
     });
 }
 
+fn nav_path(c: &mut Criterion) {
+    let world = arena();
+    let nav = match NavGrid::build(&world, 0.0, CELL_SIZE) {
+        Ok(nav) => nav,
+        Err(err) => panic!("benchmark grid builds: {err}"),
+    };
+    // Corner to corner through the pillar grid: the longest search a bot asks for.
+    let (from, to) = (Vec3::new(-18.0, 0.0, -18.0), Vec3::new(18.0, 0.0, 18.0));
+    c.bench_function("nav_path/corner_to_corner", |b| {
+        b.iter(|| nav.path(black_box(from), black_box(to)));
+    });
+}
+
+fn brain_decide_routed(c: &mut Criterion) {
+    let world = arena();
+    let nav = match NavGrid::build(&world, 0.0, CELL_SIZE) {
+        Ok(nav) => nav,
+        Err(err) => panic!("benchmark grid builds: {err}"),
+    };
+    let body = spawn(Vec3::new(-18.0, 0.0, -18.0), &world);
+    let mut brain = Brain::new(rate(), 1);
+    // A target hidden behind a pillar, so the brain follows a route; the
+    // route is replanned twice a second, so this includes that share of A*.
+    let target = match Target::try_new(Vec3::new(13.5, 1.6, 13.5), Vec3::ZERO) {
+        Some(target) => target,
+        None => panic!("benchmark target is finite"),
+    };
+    c.bench_function("brain_decide_routed/hidden_target", |b| {
+        b.iter(|| {
+            brain.decide_routed(
+                black_box(&body),
+                black_box(Some(&target)),
+                None,
+                &world,
+                &nav,
+            )
+        });
+    });
+}
+
 criterion_group!(
     benches,
     player_step,
     world_sweep,
     launcher_step,
-    brain_decide
+    brain_decide,
+    nav_path,
+    brain_decide_routed
 );
 criterion_main!(benches);
